@@ -1,4 +1,6 @@
 terraform {
+  required_version = ">= 1.6.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -9,14 +11,27 @@ terraform {
 
 provider "aws" {
   region = var.region
+
+  default_tags {
+    tags = {
+      Project     = var.cluster_name
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
-# ─────────────────────────────────────────
-# AMI: Ubuntu 22.04 LTS (Jammy)
-# ─────────────────────────────────────────
+#---------------------------------------
+# Data Sources
+#---------------------------------------
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical official
+  owners      = ["099720109477"]
 
   filter {
     name   = "name"
@@ -28,192 +43,205 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# ─────────────────────────────────────────
-# Networking: pakai default VPC & subnet
-# ─────────────────────────────────────────
-data "aws_vpc" "default" {
-  default = true
-}
+#---------------------
+#VPC
+#---------------------
 
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+resource "aws_vpc" "main" {
+  cidr_block = var.vpc_cidr
+  # Wajib true agar EC2 dapat hostname AWS
+  enable_dns_support = true
+
+  # Wajib true agar RDS endpoint bisa di-resolve
+  # dari dalam VPC. Tanpa ini koneksi ke RDS gagal
+  # meski security group & subnet sudah benar
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "${var.cluster_name}-vpc"
   }
 }
 
+
+# -----------------------------------------
+# Internet Gateway
+# Pintu dua arah untuk public subnet
+# Bastion & ALB butuh ini untuk terima
+# traffic dari internet
+# -----------------------------------------
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.cluster_name}-igw"
+  }
+
+}
+
+#----------------------------------------
+# Public Subnets
+# Untuk Bastion & ALB
+# Min 2 subnet di AZ berbeda — syarat ALB
+#----------------------------------------
+
+resource "aws_subnet" "public" {
+  count                   = length(var.public_subnet_cidrs)
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name = "${var.cluster_name}-public-${count.index + 1}"
+    Tier = "public"
+  }
+}
+
 # ─────────────────────────────────────────
-# Security Group
+# Private Subnets — Control Plane
+# 3 subnet di 3 AZ berbeda
+# Distribusi CP ke AZ berbeda agar tahan
+# jika salah satu AZ down
 # ─────────────────────────────────────────
-resource "aws_security_group" "k8s" {
-  name        = "${var.cluster_name}-sg"
-  description = "Kubernetes cluster security group"
-  vpc_id      = data.aws_vpc.default.id
 
-  # SSH — akses dari mana saja (sandbox)
-  ingress {
-    description = "SSH"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+resource "aws_subnet" "private_cp" {
+  count = length(var.private_cp_subnet_cidrs)
+
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_cp_subnet_cidrs[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index % length(data.aws_availability_zones.available.names)]
+
+  tags = {
+    Name = "${var.cluster_name}-private-cp-${count.index + 1}"
+    Tier = "private-control-plane"
+  }
+}
+
+# ─────────────────────────────────────────
+# Private Subnets — Worker Node
+# ─────────────────────────────────────────
+
+resource "aws_subnet" "private_worker" {
+  count = length(var.private_worker_subnet_cidrs)
+
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_worker_subnet_cidrs[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index % length(data.aws_availability_zones.available.names)]
+
+  tags = {
+    Name = "${var.cluster_name}-private-worker-${count.index + 1}"
+    Tier = "private-worker"
+  }
+}
+
+# ─────────────────────────────────────────
+# Private Subnets — RDS
+# Min 2 subnet di AZ berbeda
+# ─────────────────────────────────────────
+
+resource "aws_subnet" "private_db" {
+  count = length(var.private_db_subnet_cidrs)
+
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_db_subnet_cidrs[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+
+  tags = {
+    Name = "${var.cluster_name}-private-worker-${count.index + 1}"
+    Tier = "private-db"
+  }
+}
+
+# ─────────────────────────────────────────
+# Elastic IP untuk NAT Gateway
+# ─────────────────────────────────────────
+resource "aws_eip" "nat" {
+  domain     = "vpc"
+  depends_on = [aws_internet_gateway.main]
+
+  tags = {
+    Name = "${var.cluster_name}-nat-eip"
+  }
+}
+
+# ─────────────────────────────────────────
+# NAT Gateway
+# Duduk di public subnet — melayani semua
+# private subnet untuk outbound internet
+# (apt update, pull image, dll)
+# ─────────────────────────────────────────
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id
+
+  tags = {
+    Name = "${var.cluster_name}-nat-gw"
   }
 
-  # Kubernetes API server
-  ingress {
-    description = "K8s API Server"
-    from_port   = 6443
-    to_port     = 6443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  depends_on = [aws_internet_gateway.main]
+}
 
-  # NodePort services (untuk akses aplikasi dari luar)
-  ingress {
-    description = "NodePort Services"
-    from_port   = 30000
-    to_port     = 32767
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+# ─────────────────────────────────────────
+# Route Table — Public
+# Traffic keluar lewat IGW
+# ─────────────────────────────────────────
 
-  # Semua traffic antar node dalam cluster (internal)
-  ingress {
-    description = "Internal cluster traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    self        = true
-  }
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
 
-  # Semua outbound
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
   }
 
   tags = {
-    Name    = "${var.cluster_name}-sg"
-    Cluster = var.cluster_name
+    Name = "${var.cluster_name}-rt-public"
   }
 }
 
-
-# ─────────────────────────────────────────
-# Security Group RDS
-# ─────────────────────────────────────────
-# 1. Security Group untuk RDS
-resource "aws_security_group" "rds_sg" {
-  name        = "wordpress-rds-sg"
-  description = "Allow inbound traffic from K8s Nodes"
-  vpc_id      = data.aws_vpc.default.id
-
-  # Mengizinkan traffic MySQL (3306) dari IP Private VPC Anda
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    cidr_blocks = ["172.31.0.0/16"] # Sesuai network K8s Iksan tadi
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+# Hubungkan public route table ke public subnets
+resource "aws_route_table_association" "public" {
+  count = length(aws_subnet.public)
+  subnet_id = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public
+  
 }
 
-# 2. RDS Instance (MySQL)
-resource "aws_db_instance" "wordpress_db" {
-  allocated_storage    = 20
-  storage_type         = "gp2"
-  engine               = "mysql"
-  engine_version       = "8.0"
-  instance_class       = "db.t3.micro" # Hemat biaya / Free Tier
-  db_name              = "wordpressdb"
-  username             = "admin"
-  password             = "PasswordIksan123" # Gunakan Secrets Manager untuk produksi!
-  parameter_group_name = "default.mysql8.0"
-  skip_final_snapshot  = true
-  publicly_accessible  = false # Sangat penting: DB tidak boleh dibuka ke internet
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+# ─────────────────────────────────────────
+# Route Table — Private
+# Traffic keluar lewat NAT Gateway
+# ─────────────────────────────────────────
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main.id
+  }
 
   tags = {
-    Name = "WordPress-DB-Iksan"
+    Name = "${var.cluster_name}-rt-private"
   }
 }
 
-# ─────────────────────────────────────────
-# Key Pair
-# ─────────────────────────────────────────
-resource "aws_key_pair" "k8s" {
-  key_name   = "${var.cluster_name}-key"
-  public_key = file(var.public_key_path)
-
-  tags = {
-    Name = "${var.cluster_name}-key"
-  }
+# Hubungkan ke subnet CP
+resource "aws_route_table_association" "private_cp" {
+  count          = length(aws_subnet.private_cp)
+  subnet_id      = aws_subnet.private_cp[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
-# ─────────────────────────────────────────
-# EC2: Master Node (1 node)
-# ─────────────────────────────────────────
-resource "aws_instance" "master" {
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.master_instance_type
-  key_name                    = aws_key_pair.k8s.key_name
-  subnet_id                   = data.aws_subnets.default.ids[0]
-  vpc_security_group_ids      = [aws_security_group.k8s.id]
-  associate_public_ip_address = true
-
-  root_block_device {
-    volume_size           = 20
-    volume_type           = "gp3"
-    delete_on_termination = true
-  }
-
-  user_data = templatefile("${path.module}/scripts/master.sh", {
-    pod_cidr      = var.pod_cidr
-    cluster_name  = var.cluster_name
-    k8s_version   = var.k8s_version
-  })
-
-  tags = {
-    Name    = "${var.cluster_name}-master"
-    Role    = "master"
-    Cluster = var.cluster_name
-  }
+# Hubungkan ke subnet Worker
+resource "aws_route_table_association" "private_worker" {
+  count          = length(aws_subnet.private_worker)
+  subnet_id      = aws_subnet.private_worker[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
-# ─────────────────────────────────────────
-# EC2: Worker Nodes (default: 2 nodes)
-# ─────────────────────────────────────────
-resource "aws_instance" "worker" {
-  count                       = var.worker_count
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.worker_instance_type
-  key_name                    = aws_key_pair.k8s.key_name
-  subnet_id                   = data.aws_subnets.default.ids[0]
-  vpc_security_group_ids      = [aws_security_group.k8s.id]
-  associate_public_ip_address = true
-
-  root_block_device {
-    volume_size           = 20
-    volume_type           = "gp3"
-    delete_on_termination = true
-  }
-
-  user_data = templatefile("${path.module}/scripts/worker.sh", {
-    k8s_version = var.k8s_version
-  })
-
-  tags = {
-    Name    = "${var.cluster_name}-worker-${count.index + 1}"
-    Role    = "worker"
-    Cluster = var.cluster_name
-    Index   = count.index + 1
-  }
+# Hubungkan ke subnet RDS
+resource "aws_route_table_association" "private_db" {
+  count          = length(aws_subnet.private_db)
+  subnet_id      = aws_subnet.private_db[count.index].id
+  route_table_id = aws_route_table.private.id
 }
