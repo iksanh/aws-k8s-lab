@@ -1,63 +1,108 @@
-output "master_public_ip" {
-  description = "IP publik master node — pakai ini untuk SSH dan kubectl"
-  value       = aws_instance.master.public_ip
+# ─────────────────────────────────────────
+# Networking
+# ─────────────────────────────────────────
+output "vpc_id" {
+  description = "VPC ID"
+  value       = aws_vpc.main.id
 }
 
-output "master_private_ip" {
-  description = "IP private master node (dipakai worker untuk join cluster)"
-  value       = aws_instance.master.private_ip
+output "nat_gateway_ip" {
+  description = "IP publik NAT Gateway"
+  value       = aws_eip.nat.public_ip
 }
 
-output "worker_public_ips" {
-  description = "IP publik semua worker node"
-  value       = aws_instance.worker[*].public_ip
+
+# ─────────────────────────────────────────
+# Bastion
+# ─────────────────────────────────────────
+output "bastion_public_ip" {
+  description = "IP publik Bastion Host"
+  value       = aws_eip.bastion.public_ip
 }
 
+output "bastion_ssh" {
+  description = "Command SSH ke Bastion"
+  value       = "ssh -i ~/.ssh/id_rsa ubuntu@${aws_eip.bastion.public_ip}"
+}
+
+# ─────────────────────────────────────────
+# Control Plane
+# ─────────────────────────────────────────
+output "control_plane_private_ips" {
+  description = "Private IP semua Control Plane nodes"
+  value       = aws_instance.control_plane[*].private_ip
+}
+
+output "ssh_cp1" {
+  description = "Command SSH ke CP-1 via Bastion"
+  value       = "ssh -J ubuntu@${aws_eip.bastion.public_ip} ubuntu@${aws_instance.control_plane[0].private_ip}"
+}
+
+# ─────────────────────────────────────────
+# Worker Nodes
+# ─────────────────────────────────────────
 output "worker_private_ips" {
-  description = "IP private semua worker node"
+  description = "Private IP semua Worker nodes"
   value       = aws_instance.worker[*].private_ip
 }
 
-output "ssh_master" {
-  description = "Command SSH ke master node"
-  value       = "ssh -i ~/.ssh/id_rsa ubuntu@${aws_instance.master.public_ip}"
+
+# ─────────────────────────────────────────
+# ALB & NLB
+# ─────────────────────────────────────────
+output "alb_dns" {
+  description = "DNS ALB — akses aplikasi via ini"
+  value       = aws_lb.main.dns_name
 }
 
-output "ssh_workers" {
-  description = "Command SSH ke setiap worker node"
-  value = [
-    for idx, ip in aws_instance.worker[*].public_ip :
-    "ssh -i ~/.ssh/id_rsa ubuntu@${ip}  # worker-${idx + 1}"
-  ]
+output "nlb_dns" {
+  description = "DNS NLB internal — endpoint K8s API Server"
+  value       = aws_lb.control_plane.dns_name
 }
 
-# Output untuk mendapatkan alamat database setelah jadi
+# ─────────────────────────────────────────
+# RDS
+# ─────────────────────────────────────────
 output "rds_endpoint" {
-  value = aws_db_instance.wordpress_db.endpoint
+  description = "RDS endpoint — pakai ini di konfigurasi WordPress"
+  value       = aws_db_instance.main.endpoint
+  sensitive   = true
 }
 
+output "rds_db_name" {
+  description = "Nama database RDS"
+  value       = aws_db_instance.main.db_name
+}
+
+
+# ─────────────────────────────────────────
+# Next Steps
+# ─────────────────────────────────────────
 output "next_steps" {
-  description = "Langkah selanjutnya setelah terraform apply"
+  description = "Langkah setelah terraform apply"
   value = <<-EOT
 
     ============================================================
-    CLUSTER SETUP SEDANG BERJALAN (tunggu ~5 menit)
+    INFRASTRUKTUR SIAP — LANGKAH SELANJUTNYA
     ============================================================
 
-    1. SSH ke master dan cek status bootstrap:
-       ssh -i ~/.ssh/id_rsa ubuntu@${aws_instance.master.public_ip}
-       tail -f /var/log/k8s-master-init.log
+    1. SSH ke CP-1 via Bastion:
+       ssh -J ubuntu@${aws_eip.bastion.public_ip} ubuntu@${aws_instance.control_plane[0].private_ip}
 
-    2. Setelah selesai, ambil join command:
-       cat /tmp/join-command.sh
+    2. Install kubeadm, kubelet, kubectl di semua node
 
-    3. SSH ke tiap worker dan jalankan join command tersebut:
-       ssh -i ~/.ssh/id_rsa ubuntu@${aws_instance.worker[0].public_ip}
-       sudo bash /tmp/join-command.sh    # paste join command dari step 2
+    3. Init cluster di CP-1:
+       sudo kubeadm init --control-plane-endpoint="${aws_lb.control_plane.dns_name}:6443" --upload-certs
 
-    4. Kembali ke master, verifikasi node sudah join:
+    4. Join CP-2 dan CP-3 sebagai control plane
+
+    5. Join Worker-1, Worker-2, Worker-3
+
+    6. Verifikasi:
        kubectl get nodes -o wide
 
+    7. Akses aplikasi via ALB:
+       http://${aws_lb.main.dns_name}
     ============================================================
   EOT
 }
