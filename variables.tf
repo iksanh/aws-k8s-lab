@@ -121,6 +121,10 @@ variable "k8s_version" {
   default = "1.29"
 }
 
+#-----------------------------------------
+# RDS
+#-----------------------------------------
+
 variable "pod_cidr" {
   description = "CIDR untuk Pod network (Calico)"
   type = string
@@ -150,5 +154,12 @@ variable "db_instance_class" {
   description = "RDS instance class"
   type = string
   default = "db.t3.micro"
-  
+}
+
+
+
+variable "db_allocated_storage" {
+  description = "RDS storage in GB"
+  type        = number
+  default     = 20
 }
