@@ -80,7 +80,7 @@ variable "allowed_ssh_cidrs" {
 variable "bastion_instance_type" {
   description = "Instance type Bastion"
   type = string
-  default = "t3.micro"
+  default = "t2.micro"
 }
 
 variable "master_instance_type" {
@@ -97,7 +97,7 @@ variable "worker_instance_type" {
 variable "control_plane_count" {
   description = "Jumlah Control Plane (harus angka ganjil)"
   type = number
-  default = 3
+  default = 1
 
   validation {
     condition = var.control_plane_count % 2 != 0
@@ -108,7 +108,7 @@ variable "control_plane_count" {
 variable "worker_count" {
   description = "Jumlah Worker Node"
   type = number
-  default = 3  
+  default = 2  
 }
 
 #-----------------------------------------

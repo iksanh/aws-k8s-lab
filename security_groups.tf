@@ -7,7 +7,7 @@
 resource "aws_security_group" "bastion" {
 
   name        = "${var.cluster_name}-sg-bastion"
-  description = "Bastion host — SSH entry point"
+  description = "Bastion host - SSH entry point"
   vpc_id      = aws_vpc.main.id
   ingress {
     description = "SSH dari IP yang diizinkan"
@@ -37,7 +37,7 @@ resource "aws_security_group" "bastion" {
 # ─────────────────────────────────────────
 resource "aws_security_group" "alb" {
   name        = "${var.cluster_name}-sg-alb"
-  description = "ALB — HTTP/HTTPS dari internet"
+  description = "ALB - HTTP/HTTPS dari internet"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -70,7 +70,7 @@ resource "aws_security_group" "alb" {
 }
 
 # ─────────────────────────────────────────
-# SG Control Plane — tanpa cross-reference dulu
+# SG Control Plane - tanpa cross-reference dulu
 # ─────────────────────────────────────────
 resource "aws_security_group" "control_plane" {
   name        = "${var.cluster_name}-sg-cp"
@@ -86,7 +86,7 @@ resource "aws_security_group" "control_plane" {
   }
 
   ingress {
-    description = "etcd peer — hanya sesama CP"
+    description = "etcd peer - hanya sesama CP"
     from_port   = 2379
     to_port     = 2380
     protocol    = "tcp"
@@ -114,7 +114,7 @@ resource "aws_security_group" "control_plane" {
 }
 
 # ─────────────────────────────────────────
-# SG Worker — tanpa cross-reference dulu
+# SG Worker - tanpa cross-reference dulu
 # ─────────────────────────────────────────
 resource "aws_security_group" "worker" {
   name        = "${var.cluster_name}-sg-worker"
@@ -158,7 +158,7 @@ resource "aws_security_group" "worker" {
 }
 
 # ─────────────────────────────────────────
-# SG Rules — cross-reference antara CP & Worker
+# SG Rules - cross-reference antara CP & Worker
 # Dipisah agar tidak cycle
 # Kedua SG sudah exist dulu, baru rules ini dibuat
 # ─────────────────────────────────────────
@@ -221,7 +221,7 @@ resource "aws_security_group_rule" "worker_from_cp_all" {
 # ─────────────────────────────────────────
 resource "aws_security_group" "rds" {
   name        = "${var.cluster_name}-sg-rds"
-  description = "RDS MySQL — hanya dari K8s nodes"
+  description = "RDS MySQL - hanya dari K8s nodes"
   vpc_id      = aws_vpc.main.id
 
   # MySQL dari Worker Nodes

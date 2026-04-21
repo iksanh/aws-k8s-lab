@@ -17,33 +17,43 @@ resource "aws_db_subnet_group" "main" {
 # RDS Parameter Group
 # Custom konfigurasi MySQL
 # ─────────────────────────────────────────
-resource "aws_db_parameter_group" "mysql" {
-  name        = "${var.cluster_name}-mysql-params"
-  family      = "mysql8.0"
-  description = "Custom parameter group for ${var.cluster_name}"
+# ─────────────────────────────────────────
+# RDS Parameter Group
+# DINONAKTIFKAN: lab KodeKloud tidak izinkan
+# rds:CreateDBParameterGroup
+#
+# AKTIFKAN DI PRODUCTION:
+# Uncomment block ini dan ganti parameter_group_name
+# di aws_db_instance dengan:
+# parameter_group_name = aws_db_parameter_group.mysql.name
+# ─────────────────────────────────────────
+# resource "aws_db_parameter_group" "mysql" {
+#   name        = "${var.cluster_name}-mysql-params"
+#   family      = "mysql8.0"
+#   description = "Custom parameter group for ${var.cluster_name}"
 
-  # Log query yang lambat (> 2 detik)
-  # Berguna untuk debug performance
-  parameter {
-    name  = "slow_query_log"
-    value = "1"
-  }
+#   # Log query yang lambat (> 2 detik)
+#   # Berguna untuk debug performance
+#   parameter {
+#     name  = "slow_query_log"
+#     value = "1"
+#   }
 
-  parameter {
-    name  = "long_query_time"
-    value = "2"
-  }
+#   parameter {
+#     name  = "long_query_time"
+#     value = "2"
+#   }
 
-  # Wajib pakai SSL untuk koneksi ke RDS
-  parameter {
-    name  = "require_secure_transport"
-    value = "ON"
-  }
+#   # Wajib pakai SSL untuk koneksi ke RDS
+#   parameter {
+#     name  = "require_secure_transport"
+#     value = "ON"
+#   }
 
-  tags = {
-    Name = "${var.cluster_name}-mysql-params"
-  }
-}
+#   tags = {
+#     Name = "${var.cluster_name}-mysql-params"
+#   }
+# }
 
 
 # ─────────────────────────────────────────
@@ -75,7 +85,8 @@ resource "aws_db_instance" "main" {
   port                   = 3306
 
   # Parameter Group
-  parameter_group_name = aws_db_parameter_group.mysql.name
+  parameter_group_name = "default.mysql8.0"
+  # parameter_group_name = aws_db_parameter_group.mysql.name
 
   # Backup
   backup_retention_period = 7
@@ -96,40 +107,46 @@ resource "aws_db_instance" "main" {
   }
 
     # Enhanced Monitoring
-  monitoring_interval = 60
-  monitoring_role_arn = aws_iam_role.rds_monitoring.arn
+      # DINONAKTIFKAN: lab KodeKloud tidak izinkan rds:CreateDBParameterGroup
+  # AKTIFKAN DI PRODUCTION: metrics OS level per 60 detik
+  
+#   monitoring_interval = 60
+#   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
+
 
   # Performance Insights
-  performance_insights_enabled          = true
-  performance_insights_retention_period = 7
+    # DINONAKTIFKAN: lab KodeKloud tidak izinkan
+  # AKTIFKAN DI PRODUCTION: analisa query lambat via AWS Console
+#   performance_insights_enabled          = true
+#   performance_insights_retention_period = 7
 }
 
 # ─────────────────────────────────────────
 # IAM Role — RDS Enhanced Monitoring
 # Izinkan RDS kirim metrics ke CloudWatch
 # ─────────────────────────────────────────
-resource "aws_iam_role" "rds_monitoring" {
-  name = "${var.cluster_name}-rds-monitoring-role"
+# resource "aws_iam_role" "rds_monitoring" {
+#   name = "${var.cluster_name}-rds-monitoring-role"
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "monitoring.rds.amazonaws.com"
-        }
-      }
-    ]
-  })
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Action = "sts:AssumeRole"
+#         Effect = "Allow"
+#         Principal = {
+#           Service = "monitoring.rds.amazonaws.com"
+#         }
+#       }
+#     ]
+#   })
 
-  tags = {
-    Name = "${var.cluster_name}-rds-monitoring-role"
-  }
-}
+#   tags = {
+#     Name = "${var.cluster_name}-rds-monitoring-role"
+#   }
+# }
 
-resource "aws_iam_role_policy_attachment" "rds_monitoring" {
-  role       = aws_iam_role.rds_monitoring.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
-}
+# resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+#   role       = aws_iam_role.rds_monitoring.name
+#   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+# }
