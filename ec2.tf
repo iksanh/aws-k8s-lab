@@ -34,6 +34,11 @@ resource "aws_instance" "bastion" {
     volume_type           = "gp3"
     encrypted             = true
     delete_on_termination = true
+
+     tags = {
+    Name = "${var.cluster_name}-bastion-volume"
+    Role = "bastion"
+  }
   }
 
   user_data = <<-EOF
@@ -91,6 +96,11 @@ resource "aws_instance" "control_plane" {
     volume_type           = "gp3"
     encrypted             = true
     delete_on_termination = true
+
+   tags = {
+    Name = "${var.cluster_name}-cp-${count.index + 1}-volume"
+    Role = "control-plane"
+  }
   }
 
   user_data = <<-EOF
@@ -132,7 +142,12 @@ resource "aws_instance" "worker" {
     volume_size           = 30
     volume_type           = "gp3"
     encrypted             = true
-    delete_on_termination = true
+    delete_on_termination = true 
+
+    tags = {
+    Name = "${var.cluster_name}-worker-${count.index + 1}-volume"
+    Role = "worker"
+  }
   }
 
 #   user_data = templatefile("${path.module}/scripts/worker.sh", {
