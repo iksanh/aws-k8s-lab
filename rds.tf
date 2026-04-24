@@ -117,6 +117,7 @@ resource "aws_db_instance" "main" {
   # Performance Insights
     # DINONAKTIFKAN: lab KodeKloud tidak izinkan
   # AKTIFKAN DI PRODUCTION: analisa query lambat via AWS Console
+  #--------------------------------------------------------------
 #   performance_insights_enabled          = true
 #   performance_insights_retention_period = 7
 }
@@ -125,6 +126,14 @@ resource "aws_db_instance" "main" {
 # IAM Role — RDS Enhanced Monitoring
 # Izinkan RDS kirim metrics ke CloudWatch
 # ─────────────────────────────────────────
+
+# ─────────────────────────────────────────
+# IAM Role RDS Enhanced Monitoring
+# DINONAKTIFKAN: lab KodeKloud tidak izinkan iam:CreateRole
+#
+# AKTIFKAN DI PRODUCTION:
+# Uncomment block ini agar RDS bisa kirim
+# metrics OS level ke CloudWatch
 # resource "aws_iam_role" "rds_monitoring" {
 #   name = "${var.cluster_name}-rds-monitoring-role"
 
