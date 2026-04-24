@@ -80,7 +80,7 @@ variable "allowed_ssh_cidrs" {
 variable "bastion_instance_type" {
   description = "Instance type Bastion"
   type = string
-  default = "t2.micro"
+  default = "t3.micro"
 }
 
 variable "master_instance_type" {
