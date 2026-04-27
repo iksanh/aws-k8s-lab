@@ -43,7 +43,25 @@ resource "aws_instance" "bastion" {
 
   user_data = <<-EOF
     #!/bin/bash
+
+    set -e
+
+    #set hostname
     hostnamectl set-hostname "${var.cluster_name}-bastion"
+
+    #update & install dependencies
+    apt-get update -y
+    apt-get install -y softwere-properties-common python3-pip
+
+
+    #add PPA Anasible (official)
+    add-apt-repository --yes --update ppa:ansible/ansible
+
+    #install Ansible
+    apt-get install -y ansible
+
+    #Verifikasi installasi
+    ansible --version >> /var/log/ansible-install.log
   EOF
 
 #   # Install SSM Agent — akses tanpa SSH (lebih aman)
