@@ -46,7 +46,7 @@ EOF
 idx=1
 for ip in $CP_IPS; do
   echo "cp-${idx} ansible_host=${ip} ansible_user=ubuntu ansible_ssh_private_key_file=${SSH_KEY}" >> "$OUTPUT_DIR/hosts.ini"
-  ((idx++))
+  idx=$(($idx + 1))
 done
 
 # Append workers section header
