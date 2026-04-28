@@ -43,8 +43,8 @@ clicking through the AWS console manually.
 > 📍 Run on: **Local Machine**
 
 ```bash
-git clone https://github.com/<your-username>/k8s-infrastructure.git
-cd k8s-infrastructure
+git clone https://github.com/iksanh/aws-k8s-lab.git
+cd aws-k8s-lab
 ```
 
 ### Step 2 — Configure variables
