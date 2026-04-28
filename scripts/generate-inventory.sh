@@ -37,7 +37,7 @@ SSH_KEY="~/.ssh/id_rsa"
 # Generate hosts.ini — bastion section
 cat > "$OUTPUT_DIR/hosts.ini" <<EOF
 [bastion]
-bastion ansible_host=${BASTION_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${SSH_KEY}
+bastion-host ansible_host=${BASTION_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${SSH_KEY}
 
 [control_plane]
 EOF
@@ -71,6 +71,9 @@ workers
 
 [k8s_cluster:vars]
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyJump=ubuntu@${BASTION_IP}'
+
+[bastion:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 EOF
 
 echo "✅ Inventory generated at $OUTPUT_DIR/hosts.ini"
