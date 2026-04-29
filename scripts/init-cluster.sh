@@ -1,26 +1,32 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
 # init-cluster.sh
-# Init Kubernetes Cluster di Control Plane
+# Initialize Kubernetes Cluster on Control Plane node
 #
-# Cara pakai:
+# Usage:
 # chmod +x init-cluster.sh
-# ./init-cluster.sh
+# ./init-cluster.sh <NLB_DNS>
 #
-# PENTING: Jalankan HANYA di Control Plane node!
+# Example:
+# ./init-cluster.sh k8s-lab-cp-nlb-xxx.elb.us-east-1.amazonaws.com
+#
+# IMPORTANT: Run ONLY on the Control Plane node!
 # ═══════════════════════════════════════════════════════════════
 
 set -e
 set -o pipefail
 
 # ─────────────────────────────────────────
-# Variabel — sesuaikan dengan output terraform
+# Variables
 # ─────────────────────────────────────────
 POD_CIDR="192.168.0.0/16"
-NLB_DNS="k8s-lab-cp-nlb-dab37c7cd4138b9b.elb.us-east-1.amazonaws.com"
+
+# NLB DNS is passed as argument — avoids hardcoding
+# and works across multiple terraform apply cycles
+NLB_DNS="${1:?Error: NLB DNS is required. Usage: ./init-cluster.sh <NLB_DNS>}"
 
 # ─────────────────────────────────────────
-# Helper
+# Helpers
 # ─────────────────────────────────────────
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -32,39 +38,33 @@ warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error()   { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 step()    { echo -e "\n${GREEN}━━━ $1 ━━━${NC}"; }
 
-# ─────────────────────────────────────────
-# Validasi: hanya di Control Plane
-# ─────────────────────────────────────────
-if [ "$EUID" -eq 0 ]; then
-  error "Jangan jalankan sebagai root. Pakai: ./init-cluster.sh"
-fi
-
-# Ambil IP lokal node ini
+# Fetch local IP from AWS instance metadata
 LOCAL_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-info "IP lokal node ini: $LOCAL_IP"
+info "Local IP of this node: $LOCAL_IP"
+info "NLB DNS: $NLB_DNS"
 
 # ─────────────────────────────────────────
-# STEP 1: Cek apakah cluster sudah di-init
+# STEP 1: Check if cluster is already initialized
 # ─────────────────────────────────────────
-step "STEP 1: Cek status cluster"
+step "STEP 1: Check cluster status"
 if [ -f /etc/kubernetes/admin.conf ]; then
-  warning "Cluster sudah di-init sebelumnya!"
-  warning "Kalau mau init ulang, jalankan dulu:"
+  warning "Cluster was already initialized!"
+  warning "To re-initialize, run:"
   warning "sudo kubeadm reset -f"
   warning "sudo rm -rf /etc/cni/net.d \$HOME/.kube /etc/kubernetes"
   exit 0
 fi
-info "Cluster belum di-init, lanjut..."
+info "Cluster not initialized yet, proceeding..."
 
 # ─────────────────────────────────────────
-# STEP 2: Init cluster
-# Pakai IP lokal dulu sebagai endpoint
-# bukan NLB — karena saat init, API Server
-# belum ready sehingga NLB belum bisa
-# forward traffic (chicken & egg problem)
+# STEP 2: Initialize cluster
+# Use local IP as endpoint first — not NLB
+# because during init, the API Server is not
+# ready yet so NLB cannot forward traffic
+# (chicken & egg problem)
 # ─────────────────────────────────────────
-step "STEP 2: Init cluster dengan kubeadm"
-info "Menjalankan kubeadm init..."
+step "STEP 2: Initialize cluster with kubeadm"
+info "Running kubeadm init..."
 info "Control plane endpoint: $LOCAL_IP:6443"
 info "Pod CIDR: $POD_CIDR"
 
@@ -75,82 +75,81 @@ sudo kubeadm init \
   --v=5
 
 # ─────────────────────────────────────────
-# STEP 3: Setup kubectl untuk user ubuntu
-# admin.conf berisi credentials untuk
-# akses cluster sebagai admin
+# STEP 3: Setup kubectl for ubuntu user
+# admin.conf contains credentials to
+# access the cluster as admin
 # ─────────────────────────────────────────
 step "STEP 3: Setup kubectl"
-info "Buat direktori .kube..."
+info "Creating .kube directory..."
 mkdir -p $HOME/.kube
 
-info "Copy admin.conf..."
+info "Copying admin.conf..."
 sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
-info "Verifikasi kubectl:"
+info "Verifying kubectl:"
 kubectl get nodes
 
 # ─────────────────────────────────────────
 # STEP 4: Install Calico CNI
-# Container Network Interface — tanpa ini
-# pod tidak bisa konek satu sama lain
-# Node status akan NotReady tanpa CNI
+# Container Network Interface — without this
+# pods cannot communicate with each other
+# Node status will remain NotReady without CNI
 # ─────────────────────────────────────────
 step "STEP 4: Install Calico CNI"
-info "Apply Calico manifest..."
+info "Applying Calico manifest..."
 kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
 
-info "Tunggu Calico pods running (maks 2 menit)..."
+info "Waiting for Calico pods to be ready (max 2 minutes)..."
 kubectl wait --for=condition=ready pod \
   -l k8s-app=calico-node \
   -n kube-system \
   --timeout=120s
 
 # ─────────────────────────────────────────
-# STEP 5: Update kubeconfig pakai NLB
-# Setelah cluster running, ganti endpoint
-# dari IP lokal ke NLB DNS
-# Worker akan join via NLB
+# STEP 5: Update kubeconfig to use NLB
+# Once cluster is running, replace the endpoint
+# from local IP to NLB DNS so workers
+# can join via NLB
 # ─────────────────────────────────────────
-step "STEP 5: Update endpoint ke NLB"
-info "Ganti endpoint ke NLB DNS..."
+step "STEP 5: Update endpoint to NLB"
+info "Replacing endpoint with NLB DNS..."
 sudo sed -i "s|$LOCAL_IP:6443|$NLB_DNS:6443|g" \
   /etc/kubernetes/admin.conf
 
 sudo sed -i "s|$LOCAL_IP:6443|$NLB_DNS:6443|g" \
   $HOME/.kube/config
 
-info "Verifikasi endpoint baru:"
+info "Verify new endpoint:"
 grep "server:" $HOME/.kube/config
 
 # ─────────────────────────────────────────
-# STEP 6: Generate join command untuk Worker
-# Token valid 24 jam
+# STEP 6: Generate join command for Workers
+# Token is valid for 24 hours
 # ─────────────────────────────────────────
 step "STEP 6: Generate join command"
-info "Generate join command..."
+info "Generating join command..."
 JOIN_COMMAND=$(kubeadm token create --print-join-command)
 
-info "Simpan join command ke file..."
-echo "$JOIN_COMMAND" > /tmp/join-command.sh
+info "Saving join command to file..."
+echo "sudo $JOIN_COMMAND" > /tmp/join-command.sh
 chmod +x /tmp/join-command.sh
 
 # ─────────────────────────────────────────
-# SELESAI
+# DONE
 # ─────────────────────────────────────────
 echo -e "\n${GREEN}═══════════════════════════════════════════${NC}"
-echo -e "${GREEN} ✅ Cluster siap!${NC}"
+echo -e "${GREEN} ✅ Cluster is ready!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
 echo ""
-echo " Join command untuk Worker Node:"
+echo " Join command for Worker Nodes:"
 echo " ─────────────────────────────────────────"
 echo " $JOIN_COMMAND"
 echo " ─────────────────────────────────────────"
 echo ""
-echo " Simpan join command di atas!"
-echo " Jalankan di setiap Worker Node dengan prefix: sudo"
+echo " Run the command above on each Worker Node with sudo prefix"
 echo ""
-echo " Verifikasi cluster:"
+echo " Verify cluster:"
 echo " kubectl get nodes -o wide"
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
