@@ -78,3 +78,9 @@ EOF
 
 echo "✅ Inventory generated at $OUTPUT_DIR/hosts.ini"
 cat "$OUTPUT_DIR/hosts.ini"
+
+
+# Add bastion to known_hosts to prevent SSH host key verification failure
+echo "Adding bastion to known_hosts..."
+ssh-keyscan -H ${BASTION_IP} >> ~/.ssh/known_hosts 2>/dev/null
+echo "Bastion added to known_hosts"
