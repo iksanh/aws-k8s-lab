@@ -40,7 +40,7 @@ clicking through the AWS console manually.
 ## Execution Order
 
 ### Step 1 — Clone the repository
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 ```bash
 git clone https://github.com/iksanh/aws-k8s-lab.git
@@ -48,7 +48,7 @@ cd aws-k8s-lab
 ```
 
 ### Step 2 — Configure variables
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 Copy the example vars file and fill in your values:
 ```bash
@@ -57,17 +57,17 @@ cp terraform.tfvars.example terraform.tfvars
 
 Edit `terraform.tfvars`:
 ```hcl
-cluster_name         = "k8s-lab"
-region               = "us-east-1"
-public_key_path      = "~/.ssh/id_rsa.pub"
+cluster_name          = "k8s-lab"
+region                = "us-east-1"
+public_key_path       = "~/.ssh/id_rsa.pub"
 bastion_instance_type = "t3.micro"
 ```
 
-> ⚠️ Never commit `terraform.tfvars` to Git — it may contain sensitive values.
+> Never commit `terraform.tfvars` to Git — it may contain sensitive values.
 > Make sure it is listed in `.gitignore`.
 
 ### Step 3 — Initialize Terraform
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 Downloads required providers (AWS, etc.) and initializes the backend:
 ```bash
@@ -84,7 +84,7 @@ Terraform has been successfully initialized!
 ```
 
 ### Step 4 — Validate configuration
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 Check for syntax errors before applying:
 ```bash
@@ -97,7 +97,7 @@ Success! The configuration is valid.
 ```
 
 ### Step 5 — Preview changes
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 Always run plan before apply to review what will be created:
 ```bash
@@ -110,13 +110,13 @@ Plan: 25 to add, 0 to change, 0 to destroy.
 ```
 
 ### Step 6 — Apply infrastructure
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 ```bash
 terraform apply
 ```
 
-Type `yes` when prompted. This will take approximately **3-5 minutes**.
+Type `yes` when prompted. This will take approximately 3-5 minutes.
 
 Expected output:
 ```
@@ -131,7 +131,7 @@ alb_dns           = "k8s-lab-alb-xxx.us-east-1.elb.amazonaws.com"
 ```
 
 ### Step 7 — Generate Ansible inventory
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 Parse Terraform output and generate `ansible/inventory/hosts.ini`:
 ```bash
@@ -157,7 +157,7 @@ worker-2 ansible_host=10.0.21.x ansible_user=ubuntu ...
 ```
 
 ### Step 8 — Verify SSH connectivity
-> 📍 Run on: **Local Machine**
+> Run on: **Local Machine**
 
 ```bash
 ansible all -i ansible/inventory/hosts.ini -m ping
@@ -175,7 +175,7 @@ worker-2     | SUCCESS
 
 ## Destroying Infrastructure
 
-> ⚠️ This will destroy ALL resources including EC2, RDS, VPC.
+> This will destroy ALL resources including EC2, RDS, VPC.
 > Make sure you have backed up anything important.
 
 ```bash
