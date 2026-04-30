@@ -1,0 +1,82 @@
+# Kubernetes Fundamentals
+
+## Pod vs Deployment
+
+### Pod
+The smallest unit in Kubernetes. Contains one or more containers.
+If a Pod dies, it does not restart on its own.
+
+### Deployment
+Manages Pods by defining how many replicas should run at all times.
+If a Pod dies, the Deployment automatically creates a new one to
+maintain the desired replica count.
+
+### Practice
+
+#### Create a Pod directly (without Deployment)
+```bash
+kubectl run nginx-pod --image=nginx
+```
+
+Output:
+```
+pod/nginx-pod created
+```
+
+#### Delete the Pod
+```bash
+kubectl delete pod nginx-pod
+```
+
+Output:
+```
+pod "nginx-pod" deleted
+```
+
+Result: Pod is gone permanently — nothing recreates it.
+
+#### Create a Deployment
+```bash
+kubectl create deployment nginx-deployment --image=nginx --replicas=2
+```
+
+Output:
+```
+deployment.apps/nginx-deployment created
+```
+
+#### Verify Pods created by Deployment
+```bash
+kubectl get pods
+```
+
+Output:
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+nginx-deployment-6d6565499c-9tq2v   1/1     Running   0          10s
+nginx-deployment-6d6565499c-b4r9g   1/1     Running   0          10s
+```
+
+#### Delete one Pod from the Deployment
+```bash
+kubectl delete pod nginx-deployment-6d6565499c-9tq2v
+```
+
+#### Verify — Deployment creates a new Pod automatically
+```bash
+kubectl get pods
+```
+
+Output:
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+nginx-deployment-6d6565499c-b4r9g   1/1     Running   0          76s
+nginx-deployment-6d6565499c-qqhxv   1/1     Running   0          12s
+```
+
+Result: A new Pod was created automatically to maintain 2 replicas.
+
+### Key Takeaway
+Always use Deployment instead of creating Pods directly.
+Deployment ensures the desired number of Pods is always running,
+even if one is deleted or crashes.
