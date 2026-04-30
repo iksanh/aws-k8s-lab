@@ -80,3 +80,76 @@ Result: A new Pod was created automatically to maintain 2 replicas.
 Always use Deployment instead of creating Pods directly.
 Deployment ensures the desired number of Pods is always running,
 even if one is deleted or crashes.
+
+---
+
+## Service
+
+### Why do we need Service?
+Every Pod has its own IP address, but if a Pod dies, a new Pod is
+created with a different IP — causing connection loss for anything
+that was pointing to the old IP. Service solves this by providing
+a permanent IP that never changes, and automatically forwards
+traffic to whichever Pods are currently running.
+
+### Types of Service
+
+| Type | Access | Use case |
+|---|---|---|
+| ClusterIP | Inside cluster only | Communication between Pods (default) |
+| NodePort | Outside cluster via Node port | Testing only, not for production |
+| LoadBalancer | Outside cluster via cloud LB (ALB/NLB) | Production |
+
+### Practice
+
+#### Create ClusterIP Service
+```bash
+kubectl expose deployment nginx-deployment \
+  --port=80 \
+  --target-port=80 \
+  --name=nginx-svc
+```
+
+Output:
+```
+service/nginx-svc exposed
+```
+
+#### Verify Service
+```bash
+kubectl get svc nginx-svc
+```
+
+Output:
+```
+NAME        TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+nginx-svc   ClusterIP   10.107.132.114   <none>        80/TCP    17s
+```
+
+#### Access via Service IP
+```bash
+curl 10.107.132.114
+```
+
+Output:
+```
+Welcome to nginx!
+```
+
+#### Prove Service IP does not change
+```bash
+# Delete all pods
+kubectl delete pod --all
+
+# Wait for new pods to be created
+kubectl get pods
+
+# Access via same Service IP
+curl 10.107.132.114
+```
+
+Result: nginx is still accessible via the same IP even after all Pods were replaced.
+
+### Key Takeaway
+Service provides a stable IP that never changes regardless of Pod restarts.
+Traffic is automatically forwarded to healthy running Pods at all times.
