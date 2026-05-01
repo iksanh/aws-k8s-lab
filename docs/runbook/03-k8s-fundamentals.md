@@ -406,3 +406,132 @@ Result: Data survived Pod deletion because it was stored in PV, not inside the P
 - After PVC is created — PV status is **Bound**, PVC status is **Bound**
 - Data stored in PV survives Pod restarts and crashes
 - Always use PVC in Deployments to ensure data persistence
+
+---
+
+## Namespace & RBAC
+
+### Why do we need Namespace?
+Namespace is a folder inside the cluster. All resources are isolated
+per namespace. Without namespace:
+- Dev team can accidentally delete Pods in production
+- Resource names conflict (two teams both name their app "nginx")
+- Cannot limit resources per team
+- Cannot give different access levels per team
+
+```
+cluster
+  ├── namespace: dev
+  │     └── pods, services, deployments
+  ├── namespace: staging
+  │     └── pods, services, deployments
+  └── namespace: production
+        └── pods, services, deployments
+```
+
+### Default Namespaces
+
+| Namespace | Description |
+|---|---|
+| default | Where resources are created if no namespace is specified |
+| kube-system | Internal Kubernetes components (API server, etcd, Calico) |
+| kube-public | Readable by all users, used for cluster info |
+| kube-node-lease | Heartbeat between nodes and control plane |
+
+### Why do we need RBAC?
+Without RBAC, anyone with kubectl access can do anything —
+create, delete, or modify any resource in any namespace.
+RBAC allows us to control who can access what.
+
+### RBAC Components
+
+| Component | Description |
+|---|---|
+| ServiceAccount | Identity for an application or user inside the cluster |
+| Role | Defines what actions are allowed on which resources |
+| RoleBinding | Links a ServiceAccount to a Role |
+
+### Practice
+
+#### Create Namespaces
+```bash
+kubectl create namespace dev
+kubectl create namespace staging
+kubectl create namespace production
+
+kubectl get namespaces
+```
+
+#### Deploy to a specific namespace
+```bash
+kubectl create deployment nginx-dev --image=nginx -n dev
+kubectl get pods -n dev
+kubectl get pods  # default namespace — nginx-dev not visible here
+```
+
+#### Create ServiceAccount
+```bash
+kubectl create serviceaccount dev-reader -n dev
+```
+
+#### Create Role — allow only get and list pods in dev namespace
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: dev
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+EOF
+```
+
+#### Create RoleBinding — link ServiceAccount to Role
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-reader-binding
+  namespace: dev
+subjects:
+- kind: ServiceAccount
+  name: dev-reader
+  namespace: dev
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+EOF
+```
+
+#### Test RBAC permissions
+```bash
+# Can get pods in dev namespace — should be yes
+kubectl auth can-i get pods -n dev \
+  --as=system:serviceaccount:dev:dev-reader
+
+# Can delete pods in dev namespace — should be no
+kubectl auth can-i delete pods -n dev \
+  --as=system:serviceaccount:dev:dev-reader
+
+# Can get pods in staging namespace — should be no
+kubectl auth can-i get pods -n staging \
+  --as=system:serviceaccount:dev:dev-reader
+```
+
+Output:
+```
+yes
+no
+no
+```
+
+### Key Takeaway
+- **Namespace** isolates resources between teams and environments
+- **RBAC** controls who can access what inside the cluster
+- Use **ServiceAccount** as the identity, **Role** to define permissions,
+  and **RoleBinding** to connect them
