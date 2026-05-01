@@ -153,3 +153,87 @@ Result: nginx is still accessible via the same IP even after all Pods were repla
 ### Key Takeaway
 Service provides a stable IP that never changes regardless of Pod restarts.
 Traffic is automatically forwarded to healthy running Pods at all times.
+
+---
+
+## ConfigMap & Secret
+
+### Why not hardcode configuration?
+- **Security risk** — passwords exposed in Git, anyone with repo access can see them
+- **Not flexible** — changing a database host requires rebuilding the image and editing manifests
+
+### ConfigMap
+Used for non-sensitive data such as database host, port, and app config.
+Values are stored as plain text and are visible to anyone with kubectl access.
+
+### Secret
+Used for sensitive data such as passwords, API keys, and tokens.
+Values are base64 encoded — not encrypted. Anyone with kubectl access
+can still decode them with `base64 --decode`.
+
+> In production, Secret should be combined with RBAC, AWS Secrets Manager,
+> or Vault for proper encryption.
+
+### Practice
+
+#### Create ConfigMap
+```bash
+kubectl create configmap wordpress-config \
+  --from-literal=DB_HOST=mydb.example.com \
+  --from-literal=DB_NAME=wordpressdb
+```
+
+#### Verify ConfigMap — values are visible in plain text
+```bash
+kubectl describe configmap wordpress-config
+```
+
+Output:
+```
+Data
+====
+DB_HOST:
+----
+mydb.example.com
+DB_NAME:
+----
+wordpressdb
+```
+
+#### Create Secret
+```bash
+kubectl create secret generic wordpress-secret \
+  --from-literal=DB_PASSWORD=SuperSecret123 \
+  --from-literal=DB_USER=wpuser
+```
+
+#### Verify Secret — values are hidden
+```bash
+kubectl describe secret wordpress-secret
+```
+
+Output:
+```
+Data
+====
+DB_PASSWORD:  14 bytes
+DB_USER:      6 bytes
+```
+
+#### Decode Secret value
+```bash
+kubectl get secret wordpress-secret -o jsonpath='{.data.DB_PASSWORD}' | base64 --decode
+```
+
+Output:
+```
+SuperSecret123
+```
+
+Result: Secret is base64 encoded, not encrypted — the original value can be decoded.
+
+### Key Takeaway
+- Use **ConfigMap** for non-sensitive configuration
+- Use **Secret** for sensitive data
+- Secret is NOT encryption — it is only base64 encoding
+- In production, always add an extra layer of protection for Secrets
