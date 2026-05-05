@@ -40,22 +40,7 @@ resource "aws_security_group" "alb" {
   description = "ALB - HTTP/HTTPS dari internet"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description = "HTTP dari internet"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTPS dari internet"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
+  
   egress {
     description = "Forward ke worker nodes"
     from_port   = 0
@@ -69,6 +54,36 @@ resource "aws_security_group" "alb" {
   }
 }
 
+# ALB ingress rules — semua terpisah
+resource "aws_security_group_rule" "alb_http" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTP from internet"
+}
+
+resource "aws_security_group_rule" "alb_https" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTPS from internet"
+}
+
+resource "aws_security_group_rule" "alb_argocd" {
+  type              = "ingress"
+  from_port         = 8080
+  to_port           = 8080
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+  description       = "ArgoCD UI from internet"
+}
 # ─────────────────────────────────────────
 # SG Control Plane - tanpa cross-reference dulu
 # ─────────────────────────────────────────
@@ -76,6 +91,10 @@ resource "aws_security_group" "control_plane" {
   name        = "${var.cluster_name}-sg-cp"
   description = "Kubernetes Control Plane nodes"
   vpc_id      = aws_vpc.main.id
+
+  lifecycle {
+    ignore_changes = [ ingress ]
+  }
 
   ingress {
     description     = "SSH dari Bastion"
@@ -120,6 +139,10 @@ resource "aws_security_group" "worker" {
   name        = "${var.cluster_name}-sg-worker"
   description = "Kubernetes Worker Nodes"
   vpc_id      = aws_vpc.main.id
+
+  lifecycle {
+    ignore_changes = [ ingress ]
+  }
 
   ingress {
     description     = "SSH dari Bastion"
@@ -253,3 +276,4 @@ resource "aws_security_group" "rds" {
     Name = "${var.cluster_name}-sg-rds"
   }
 }
+
