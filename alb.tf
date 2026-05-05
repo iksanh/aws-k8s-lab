@@ -143,3 +143,27 @@ resource "aws_lb_listener" "control_plane" {
     target_group_arn = aws_lb_target_group.control_plane.arn
   }
 }
+
+resource "aws_lb_target_group" "argocd" {
+
+  name = "${var.cluster_name}-tg-argocd"
+  port = 30554
+  protocol = "HTTP"
+  vpc_id = aws_vpc.main.id
+  target_type = "instance"
+
+  health_check {
+    enabled = true
+    path = "/"
+    port = "traffic-port"
+    protocol = "HTTP"
+    healthy_threshold = 5
+    unhealthy_threshold = 2
+    timeout = 5
+    interval = 30
+    matcher = "200-404"
+  }
+  tags = {
+    Name = "${var.cluster_name}-tg-argocd"
+  }
+}
