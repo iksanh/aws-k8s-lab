@@ -135,6 +135,27 @@ info "Saving join command to file..."
 echo "sudo $JOIN_COMMAND" > /tmp/join-command.sh
 chmod +x /tmp/join-command.sh
 
+
+# ─────────────────────────────────────────
+# STEP 7: Create kubectl alias (k)
+# ─────────────────────────────────────────
+step "STEP 7: Configure kubectl alias"
+
+info "Adding alias 'k' for kubectl..."
+
+# Tambahkan alias ke bashrc jika belum ada
+if ! grep -q "alias k=kubectl" ~/.bashrc; then
+  echo "alias k=kubectl" >> ~/.bashrc
+  info "Alias added to ~/.bashrc"
+else
+  info "Alias already exists in ~/.bashrc"
+fi
+
+# Load ulang bashrc agar langsung bisa dipakai
+source ~/.bashrc
+
+info "Alias 'k' is now ready to use"
+
 # ─────────────────────────────────────────
 # DONE
 # ─────────────────────────────────────────
