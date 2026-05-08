@@ -1,0 +1,236 @@
+---
+# ═══════════════════════════════════════════════════════════════
+# install-k8s.yml
+# Install Kubernetes dependencies on all nodes
+# (Control Plane & Worker Nodes)
+# ═══════════════════════════════════════════════════════════════
+
+- name: Install Kubernetes dependecies
+  hosts: k8s_cluster
+  become: true
+  vars:
+    k8s_version: "1.29"
+  
+  handlers:
+    - name: Update apt cache
+      apt:
+        update_cache: true
+      changed_when: false
+
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: true
+  
+
+
+  tasks:
+      # ─────────────────────────────────────────
+      # STEP 1: Disable Swap
+      # ─────────────────────────────────────────
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_facts['swaptotal_mb'] > 0
+
+    - name: Remove swap entry from fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '\sswap\s'
+        state: absent
+    # ─────────────────────────────────────────
+    # STEP 2: Load Kernel Modules
+    # ─────────────────────────────────────────
+    - name: Create k8s modul config
+      copy: 
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          br_netfilter
+          overlay
+    - name: Load overlay module
+      modprobe:
+        name: overlay
+        state: present
+    
+    - name: Load br_netfilter module
+      modprobe:
+        name: br_netfilter
+        state: present
+    
+    # ─────────────────────────────────────────
+    # STEP 3: Configure Sysctl
+    # ─────────────────────────────────────────
+
+    - name: Create k8s sysctl config
+      copy:
+        dest: /etc/sysctl.d/k8s.conf
+        content: |
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+    
+    - name: Apply sysctl params
+      command: sysctl --system
+      changed_when: false
+
+    # ─────────────────────────────────────────
+    # STEP 4: Install containerd
+    # ─────────────────────────────────────────
+
+    - name: Install containerd dependencies
+      apt:
+        name: 
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+    
+    - name: Create keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key
+      shell: |
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: Set Docker GPG key permissions
+      file:
+        path: /etc/apt/keyrings/docker.gpg
+        mode: '0644'
+      when: not ansible_check_mode
+
+    - name: Add Docker repository
+      shell: |
+        echo "deb [arch=$(dpkg --print-architecture) \
+        signed-by=/etc/apt/keyrings/docker.gpg] \
+        https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+        tee /etc/apt/sources.list.d/docker.list
+      args:
+        creates: /etc/apt/sources.list.d/docker.list
+
+    - name: Install containerd
+      apt:
+        name: containerd.io
+        state: present
+        update_cache: true
+
+
+    # ─────────────────────────────────────────
+    # STEP 5: Configure containerd
+    # ─────────────────────────────────────────
+    - name: Check SystemdCgroup status
+      command: grep "SystemdCgroup = true" /etc/containerd/config.toml
+      register: systemd_cgroup_check
+      failed_when: false
+      changed_when: false
+
+    - name: Remove old containerd config
+      file:
+        path: /etc/containerd/config.toml
+        state: absent
+      when: systemd_cgroup_check.rc != 0
+
+    - name: Check if containerd config exists
+      stat:
+        path: /etc/containerd/config.toml
+      register: containerd_configured
+
+
+    - name: Generate default containerd config
+      shell: containerd config default > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Enable SystemdCgroup in containerd config
+      lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: 'SystemdCgroup = false'
+        line: '            SystemdCgroup = true'
+      notify: Restart containerd
+      
+
+    - name: Verify containerd is running
+      systemd:
+        name: containerd
+      register: containerd_status
+      failed_when: containerd_status.status.ActiveState != 'active'  
+
+    # ─────────────────────────────────────────
+    # STEP 6: Install kubeadm, kubelet, kubectl
+    # ─────────────────────────────────────────
+    - name: Download Kubernetes GPG key
+      shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key | \
+        gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes repository
+      copy:
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /\n"
+      notify: Update apt cache
+
+    - name: Update apt cache
+      apt:
+        update_cache: true
+      changed_when: false
+
+    - name: Install kubelet, kubeadm, kubectl
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: Hold Kubernetes packages version
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Enable kubelet
+      systemd:
+        name: kubelet
+        enabled: true
+
+    # ─────────────────────────────────────────
+    # STEP 7: Verify Installation
+    # ─────────────────────────────────────────
+    - name: Get kubeadm version
+      command: kubeadm version
+      register: kubeadm_version
+      changed_when: false
+
+    - name: Get kubelet version
+      command: kubelet --version
+      register: kubelet_version
+      changed_when: false
+
+    - name: Get kubectl version
+      command: kubectl version --client
+      register: kubectl_version
+      changed_when: false
+
+    - name: Print versions
+      debug:
+        msg:
+          - "kubeadm: {{ kubeadm_version.stdout }}"
+          - "kubelet: {{ kubelet_version.stdout }}"
+          - "kubectl: {{ kubectl_version.stdout }}"
+
+    - name: Verify containerd is active
+      command: systemctl is-active containerd
+      register: containerd_status
+      changed_when: false
+      failed_when: containerd_status.stdout != 'active'
