@@ -108,6 +108,7 @@ resource "aws_instance" "control_plane" {
   ].id
   vpc_security_group_ids      = [aws_security_group.control_plane.id]
   associate_public_ip_address = false
+  iam_instance_profile = aws_iam_instance_profile.k8s_node.name
 
   root_block_device {
     volume_size           = 30
@@ -155,6 +156,8 @@ resource "aws_instance" "worker" {
   ].id
   vpc_security_group_ids      = [aws_security_group.worker.id]
   associate_public_ip_address = false
+
+  iam_instance_profile = aws_iam_instance_profile.k8s_node.name
 
   root_block_device {
     volume_size           = 30
