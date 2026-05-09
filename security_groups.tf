@@ -84,6 +84,28 @@ resource "aws_security_group_rule" "alb_argocd" {
   security_group_id = aws_security_group.alb.id
   description       = "ArgoCD UI from internet"
 }
+
+resource "aws_security_group_rule" "alb_prometheus" {
+  type              = "ingress"
+  from_port         = 8081
+  to_port           = 8081
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+  description       = "Prometheus UI from internet"
+}
+
+resource "aws_security_group_rule" "alb_grafana" {
+  type              = "ingress"
+  from_port         = 8082
+  to_port           = 8082
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+  description       = "Grafana UI from internet"
+}
+
+
 # ─────────────────────────────────────────
 # SG Control Plane - tanpa cross-reference dulu
 # ─────────────────────────────────────────
@@ -237,6 +259,17 @@ resource "aws_security_group_rule" "worker_from_cp_all" {
   source_security_group_id = aws_security_group.control_plane.id
   description              = "Semua traffic dari Control Plane"
 }
+
+# resource "aws_security_group_rule" "cp_from_nlb" {
+
+#   type = "ingress"
+#   from_port = 6443
+#   to_port = 6443
+#   protocol = "tcp"
+#   cidr_blocks = ["10.0.0.0/16"] # Match your CIDR VPC 
+#   security_group_id = aws_security_group.control_plane.id
+#   description = "K8s API from NLB (healt check)" 
+# }
 # ─────────────────────────────────────────
 # SG RDS
 # Database tidak kenal dunia luar
