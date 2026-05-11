@@ -32,6 +32,35 @@ info()  { echo -e "$${GREEN}[INFO]$${NC} $1"; }
 error() { echo -e "$${RED}[ERROR]$${NC} $1"; exit 1; }
 step()  { echo -e "\n$${GREEN}━━━ $1 ━━━$${NC}"; }
 
+# Retry a command up to N times with delay between attempts.
+# Useful for network-dependent operations during early boot
+# when networking might not be fully stable yet.
+retry() {
+  local max_attempts=$1
+  local delay=$2
+  shift 2
+  local attempt=1
+
+  until "$@"; do
+    if [ $attempt -ge $max_attempts ]; then
+      error "Command failed after $max_attempts attempts: $*"
+    fi
+    info "Attempt $attempt/$max_attempts failed, retrying in $${delay}s..."
+    sleep $delay
+    attempt=$((attempt + 1))
+  done
+}
+
+# ─────────────────────────────────────────
+# STEP -1: Wait for network to be ready
+# Early-boot networking can be flaky on EC2.
+# This ensures DNS + outbound connectivity work
+# before we start hitting apt repos.
+# ─────────────────────────────────────────
+step "STEP -1: Wait for Network"
+retry 30 5 curl -fsS --max-time 5 https://download.docker.com -o /dev/null
+info "Network is ready"
+
 info "Starting K8s base install on $${NODE_HOSTNAME} (K8s v$${K8S_VERSION})"
 
 # ─────────────────────────────────────────
@@ -88,8 +117,8 @@ info "Sysctl applied"
 # Container runtime used by Kubernetes, lighter than Docker
 # ─────────────────────────────────────────
 step "STEP 4: Install containerd"
-apt-get update -y
-apt-get install -y ca-certificates curl gnupg
+retry 5 10 apt-get update -y
+retry 3 5  apt-get install -y ca-certificates curl gnupg
 
 install -m 0755 -d /etc/apt/keyrings
 
@@ -100,8 +129,8 @@ chmod a+r /etc/apt/keyrings/docker.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   tee /etc/apt/sources.list.d/docker.list
 
-apt-get update -y
-apt-get install -y containerd.io
+retry 5 10 apt-get update -y
+retry 3 5  apt-get install -y containerd.io
 info "containerd installed"
 
 # ─────────────────────────────────────────
@@ -131,8 +160,8 @@ curl -fsSL https://pkgs.k8s.io/core:/stable:/v$${K8S_VERSION}/deb/Release.key | 
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v$${K8S_VERSION}/deb/ /" | \
   tee /etc/apt/sources.list.d/kubernetes.list
 
-apt-get update -y
-apt-get install -y kubelet kubeadm kubectl
+retry 5 10 apt-get update -y
+retry 3 5  apt-get install -y kubelet kubeadm kubectl
 
 # Hold versions to prevent accidental auto-upgrade
 apt-mark hold kubelet kubeadm kubectl
