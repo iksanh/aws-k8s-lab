@@ -5,14 +5,14 @@
 # ─────────────────────────────────────────
 
 resource "aws_key_pair" "k8s" {
-    key_name = "${var.cluster_name}-key"
-    public_key = file(var.public_key_path)
+  key_name   = "${var.cluster_name}-key"
+  public_key = file(var.public_key_path)
 
 
-    tags = {
-      Name = "${var.cluster_name}-key"
-    }
-  
+  tags = {
+    Name = "${var.cluster_name}-key"
+  }
+
 }
 
 # ─────────────────────────────────────────
@@ -35,10 +35,10 @@ resource "aws_instance" "bastion" {
     encrypted             = true
     delete_on_termination = true
 
-     tags = {
-    Name = "${var.cluster_name}-bastion-volume"
-    Role = "bastion"
-  }
+    tags = {
+      Name = "${var.cluster_name}-bastion-volume"
+      Role = "bastion"
+    }
   }
 
   user_data = <<-EOF
@@ -64,14 +64,14 @@ resource "aws_instance" "bastion" {
     ansible --version >> /var/log/ansible-install.log
   EOF
 
-#   # Install SSM Agent — akses tanpa SSH (lebih aman)
-#   user_data = <<-EOF
-#     #!/bin/bash
-#     apt-get update -y
-#     snap install amazon-ssm-agent --classic
-#     systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-#     systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
-#   EOF
+  #   # Install SSM Agent — akses tanpa SSH (lebih aman)
+  #   user_data = <<-EOF
+  #     #!/bin/bash
+  #     apt-get update -y
+  #     snap install amazon-ssm-agent --classic
+  #     systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+  #     systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+  #   EOF
 
   tags = {
     Name = "${var.cluster_name}-bastion"
@@ -100,15 +100,15 @@ resource "aws_eip" "bastion" {
 resource "aws_instance" "control_plane" {
   count = var.control_plane_count
 
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.master_instance_type
-  key_name                    = aws_key_pair.k8s.key_name
-  subnet_id                   = aws_subnet.private_cp[
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.master_instance_type
+  key_name      = aws_key_pair.k8s.key_name
+  subnet_id = aws_subnet.private_cp[
     count.index % length(aws_subnet.private_cp)
   ].id
   vpc_security_group_ids      = [aws_security_group.control_plane.id]
   associate_public_ip_address = false
-  iam_instance_profile = aws_iam_instance_profile.k8s_node.name
+  iam_instance_profile        = aws_iam_instance_profile.k8s_node.name
 
   root_block_device {
     volume_size           = 30
@@ -116,27 +116,37 @@ resource "aws_instance" "control_plane" {
     encrypted             = true
     delete_on_termination = true
 
-   tags = {
-    Name = "${var.cluster_name}-cp-${count.index + 1}-volume"
-    Role = "control-plane"
-  }
+    tags = {
+      Name = "${var.cluster_name}-cp-${count.index + 1}-volume"
+      Role = "control-plane"
+    }
   }
 
-  user_data = <<-EOF
-    #!/bin/bash
-    hostnamectl set-hostname "${var.cluster_name}-cp-${count.index + 1}"
-  EOF
+  # user_data = <<-EOF
+  #   #!/bin/bash
+  #   hostnamectl set-hostname "${var.cluster_name}-cp-${count.index + 1}"
+  # EOF
 
-#   user_data = templatefile("${path.module}/scripts/master.sh", {
-#     pod_cidr     = var.pod_cidr
-#     cluster_name = var.cluster_name
-#     k8s_version  = var.k8s_version
-#     node_index   = count.index
-#   })
+  # user_data = templatefile("${path.module}/scripts/install-k8s.sh.tpl", {
+  #   k8s_version   = var.k8s_version
+  #   node_hostname = "${var.cluster_name}-cp-${count.index + 1}"
+  # })
+
+  user_data = templatefile("${path.module}/scripts/master.sh.tpl", {
+    k8s_version   = var.k8s_version
+    node_hostname = "${var.cluster_name}-cp-${count.index + 1}"
+    pod_cidr      = var.pod_cidr
+    nlb_dns       = aws_lb.control_plane.dns_name
+    cluster_name  = var.cluster_name
+    aws_region    = var.region
+  })
+  user_data_replace_on_change = true
+
+
 
   tags = {
-    Name  = "${var.cluster_name}-cp-${count.index + 1}"
-    Role  = "control-plane"
+    Name = "${var.cluster_name}-cp-${count.index + 1}"
+    Role = "control-plane"
   }
 }
 
@@ -148,10 +158,10 @@ resource "aws_instance" "control_plane" {
 resource "aws_instance" "worker" {
   count = var.worker_count
 
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.worker_instance_type
-  key_name                    = aws_key_pair.k8s.key_name
-  subnet_id                   = aws_subnet.private_worker[
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.worker_instance_type
+  key_name      = aws_key_pair.k8s.key_name
+  subnet_id = aws_subnet.private_worker[
     count.index % length(aws_subnet.private_worker)
   ].id
   vpc_security_group_ids      = [aws_security_group.worker.id]
@@ -163,22 +173,27 @@ resource "aws_instance" "worker" {
     volume_size           = 30
     volume_type           = "gp3"
     encrypted             = true
-    delete_on_termination = true 
+    delete_on_termination = true
 
     tags = {
-    Name = "${var.cluster_name}-worker-${count.index + 1}-volume"
-    Role = "worker"
-  }
+      Name = "${var.cluster_name}-worker-${count.index + 1}-volume"
+      Role = "worker"
+    }
   }
 
-#   user_data = templatefile("${path.module}/scripts/worker.sh", {
-#     k8s_version = var.k8s_version
-#   })
+  user_data = templatefile("${path.module}/scripts/worker.sh.tpl", {
+    k8s_version   = var.k8s_version
+    node_hostname = "${var.cluster_name}-worker-${count.index + 1}"
+    cluster_name  = var.cluster_name
+    aws_region    = var.region
+  })
 
-  user_data = <<-EOF
-    #!/bin/bash
-    hostnamectl set-hostname "${var.cluster_name}-worker-${count.index + 1}"
-  EOF
+  user_data_replace_on_change = true
+
+  # user_data = <<-EOF
+  #   #!/bin/bash
+  #   hostnamectl set-hostname "${var.cluster_name}-worker-${count.index + 1}"
+  # EOF
 
   tags = {
     Name  = "${var.cluster_name}-worker-${count.index + 1}"
