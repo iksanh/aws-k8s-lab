@@ -1,0 +1,101 @@
+# Cluster Setup Runbook
+
+## Why do all nodes need the same base install?
+Every node (control plane and worker) needs:
+- **containerd** — container runtime
+- **kubelet** — agent that communicates with the API Server
+- **kubeadm** — tool to bootstrap or join a cluster
+
+`master.sh.tpl` and `worker.sh.tpl` both include this base install
+before doing their role-specific work.
+
+## Why does cluster init use local IP first, not NLB?
+During init, the API Server is not yet listening on port 6443, so the
+NLB health check fails and cannot forward traffic. This creates a
+deadlock: NLB needs the API Server up, the API Server needs a valid
+endpoint to init against.
+
+The fix: init with the local IP, then rewrite the kubeconfig endpoint
+to the NLB DNS once the API Server is running and NLB targets are
+healthy.
+
+---
+
+## Prerequisites
+- Terraform applied
+- `set-env.sh` sourced successfully
+- `generate-inventory.sh` executed successfully
+- All nodes reachable via `ansible all -m ping`
+
+> Note: IPs are dynamic and change on every `terraform apply`.
+> Always reload environment variables via `set-env.sh` after apply.
+
+---
+
+## Execution Order
+
+### Step 1 — Load environment variables
+> Run on: **Local Machine**
+
+```bash
+source scripts/set-env.sh
+```
+
+Expected output:
+```
+Fetching Terraform outputs...
+Environment variables loaded:
+  BASTION_IP = <bastion-public-ip>
+  NLB_DNS    = k8s-lab-cp-nlb-xxx.elb.us-east-1.amazonaws.com
+  ALB_DNS    = k8s-lab-alb-xxx.us-east-1.elb.amazonaws.com
+  CP1_IP     = 10.0.10.x
+  WORKER1_IP = 10.0.20.x
+  WORKER2_IP = 10.0.21.x
+```
+
+### Step 2 — Generate Ansible inventory
+> Run on: **Local Machine**
+
+```bash
+bash scripts/generate-inventory.sh
+cat ansible/inventory/hosts.ini
+```
+
+### Step 3 — Verify SSH connectivity to all nodes
+> Run on: **Local Machine**
+
+```bash
+ansible all -i ansible/inventory/hosts.ini -m ping
+```
+
+Expected output:
+```
+bastion-host | SUCCESS
+cp-1         | SUCCESS
+worker-1     | SUCCESS
+worker-2     | SUCCESS
+```
+
+### Step 4 — Generate join command and run on all workers
+> Run on: **Local Machine**
+
+Fetch a fresh join token from CP and execute it on all workers in one shot:
+
+```bash
+ansible workers -i ansible/inventory/hosts.ini -m shell \
+  -a "sudo $(ansible cp-1 -i ansible/inventory/hosts.ini -m shell \
+    -a 'kubeadm token create --print-join-command' \
+    | grep -E '^kubeadm join')" \
+  --timeout=120
+```
+
+### Step 5 — Verify the cluster is ready
+> Run on: **Local Machine**
+
+```bash
+ansible cp-1 -i ansible/inventory/hosts.ini -m shell \
+  -a "kubectl get nodes -o wide"
+```
+
+Expected: all nodes in `Ready` state. (If `NotReady`, wait ~30s for
+Calico CNI to finish initializing on the new workers, then re-check.)
