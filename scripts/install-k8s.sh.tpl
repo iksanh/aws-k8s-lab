@@ -169,9 +169,26 @@ systemctl enable kubelet
 info "kubeadm, kubelet, kubectl installed and held"
 
 # ─────────────────────────────────────────
-# STEP 7: Verify installation
+# STEP 7: Install AWS CLI v2
+# Required by master/worker scripts to interact
+# with SSM Parameter Store for join command sharing.
+# We use the official installer (v1 in apt is deprecated)
 # ─────────────────────────────────────────
-step "STEP 7: Verify Installation"
+step "STEP 7: Install AWS CLI v2"
+cd /tmp
+retry 3 10 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip -q awscliv2.zip
+./aws/install
+rm -rf aws awscliv2.zip
+cd -
+
+aws --version
+info "AWS CLI v2 installed"
+
+# ─────────────────────────────────────────
+# STEP 8: Verify installation
+# ─────────────────────────────────────────
+step "STEP 8: Verify Installation"
 kubeadm version
 kubelet --version
 kubectl version --client
