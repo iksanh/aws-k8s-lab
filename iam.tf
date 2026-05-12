@@ -37,3 +37,13 @@ resource "aws_iam_instance_profile" "k8s_node" {
   name = "${var.cluster_name}-node-profile"
   role = aws_iam_role.k8s_node.name
 }
+
+# ─────────────────────────────────────────
+# SSM Parameter Store access for cluster bootstrap
+# Control plane writes join command, workers read it
+# Using AWS managed policy (lab environment)
+# ─────────────────────────────────────────
+resource "aws_iam_role_policy_attachment" "ssm_full" {
+  role       = aws_iam_role.k8s_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
+}
