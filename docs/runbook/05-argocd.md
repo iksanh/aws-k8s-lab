@@ -103,9 +103,9 @@ ArgoCD by default redirects HTTP to HTTPS. This causes ALB health checks to fail
 Run ArgoCD in insecure mode to disable the redirect:
 
 ```bash
-kubectl patch deployment argocd-server -n argocd \
-  --type='json' \
-  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--insecure"}]'
+kubectl -n argocd patch configmap argocd-cmd-params-cm \
+  --type merge \
+  -p '{"data":{"server.insecure":"true"}}'
 ```
 
 ### Expose via ALB
