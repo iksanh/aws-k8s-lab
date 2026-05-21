@@ -105,3 +105,21 @@ Calico CNI to finish initializing on the new workers, then re-check.)
 ```bash
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 && chmod 700 get_helm.sh && ./get_helm.sh
 ```
+
+## Install NGINX Ingress Controller
+
+### 1.1 Install via Helm
+
+```bash
+# Add repo
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+# Install dengan NodePort fixed
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=NodePort \
+  --set controller.service.nodePorts.http=30080 \
+  --set controller.service.nodePorts.https=32443
+```
