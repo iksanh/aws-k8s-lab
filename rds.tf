@@ -106,20 +106,20 @@ resource "aws_db_instance" "main" {
     Name = "${var.cluster_name}-mysql"
   }
 
-    # Enhanced Monitoring
-      # DINONAKTIFKAN: lab KodeKloud tidak izinkan rds:CreateDBParameterGroup
+  # Enhanced Monitoring
+  # DINONAKTIFKAN: lab KodeKloud tidak izinkan rds:CreateDBParameterGroup
   # AKTIFKAN DI PRODUCTION: metrics OS level per 60 detik
-  
-#   monitoring_interval = 60
-#   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
+
+  #   monitoring_interval = 60
+  #   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
 
 
   # Performance Insights
-    # DINONAKTIFKAN: lab KodeKloud tidak izinkan
+  # DINONAKTIFKAN: lab KodeKloud tidak izinkan
   # AKTIFKAN DI PRODUCTION: analisa query lambat via AWS Console
   #--------------------------------------------------------------
-#   performance_insights_enabled          = true
-#   performance_insights_retention_period = 7
+  #   performance_insights_enabled          = true
+  #   performance_insights_retention_period = 7
 }
 
 # ─────────────────────────────────────────

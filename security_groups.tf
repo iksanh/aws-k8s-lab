@@ -40,7 +40,7 @@ resource "aws_security_group" "alb" {
   description = "ALB - HTTP/HTTPS dari internet"
   vpc_id      = aws_vpc.main.id
 
-  
+
   egress {
     description = "Forward ke worker nodes"
     from_port   = 0
@@ -115,7 +115,7 @@ resource "aws_security_group" "control_plane" {
   vpc_id      = aws_vpc.main.id
 
   lifecycle {
-    ignore_changes = [ ingress ]
+    ignore_changes = [ingress]
   }
 
   ingress {
@@ -163,7 +163,7 @@ resource "aws_security_group" "worker" {
   vpc_id      = aws_vpc.main.id
 
   lifecycle {
-    ignore_changes = [ ingress ]
+    ignore_changes = [ingress]
   }
 
   ingress {

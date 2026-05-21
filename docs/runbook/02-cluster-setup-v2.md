@@ -99,3 +99,9 @@ ansible cp-1 -i ansible/inventory/hosts.ini -m shell \
 
 Expected: all nodes in `Ready` state. (If `NotReady`, wait ~30s for
 Calico CNI to finish initializing on the new workers, then re-check.)
+
+## Practice
+### Install Helm
+```bash
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 && chmod 700 get_helm.sh && ./get_helm.sh
+```
