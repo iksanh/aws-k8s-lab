@@ -115,11 +115,68 @@ curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scrip
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-# Install dengan NodePort fixed
+# create ns ingress-nginx 
+kubectl create ns ingress-nginx
+
+# Install with NodePort fixed
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --create-namespace \
   --set controller.service.type=NodePort \
   --set controller.service.nodePorts.http=30080 \
   --set controller.service.nodePorts.https=32443
+```
+
+### Install ArgoCD on cluster
+```bash
+# Create argocd namespace
+kubectl create namespace argocd
+
+# Install ArgoCD — non-HA (suitable for lab/learning)
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.0-rc4/manifests/install.yaml
+
+# Wait for all pods to be running
+kubectl get pods -n argocd -w
+```
+
+Expected output:
+```
+NAME                                                READY   STATUS
+argocd-application-controller-0                     1/1     Running
+argocd-applicationset-controller-xxx                1/1     Running
+argocd-dex-server-xxx                               1/1     Running
+argocd-notifications-controller-xxx                 1/1     Running
+argocd-redis-xxx                                    1/1     Running
+argocd-repo-server-xxx                              1/1     Running
+argocd-server-xxx                                   1/1     Running
+```
+
+
+
+### Create Ingress ArgoCD
+
+```bash
+cat > apps/argocd/ingress.yaml << 'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.iksanhariji.my.id
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+EOF
+
+kubectl apply -f apps/argocd/ingress.yaml
 ```
