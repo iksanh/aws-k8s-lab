@@ -127,56 +127,86 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.service.nodePorts.https=32443
 ```
 
-### Install ArgoCD on cluster
+# ArgoCD Install Runbook
+
+## Prerequisites
+
+- Kubernetes cluster running
+- `kubectl` configured and connected to cluster
+- DNS record for `argocd.iksanhariji.my.id` pointing to cluster ingress IP
+
+---
+
+## Install ArgoCD on Cluster
+
 ```bash
-# Create argocd namespace
+# 1. Create namespace
 kubectl create namespace argocd
 
-# Install ArgoCD — non-HA (suitable for lab/learning)
+# 2. Install ArgoCD — non-HA (suitable for lab/learning)
 kubectl apply -n argocd --server-side --force-conflicts \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.0-rc4/manifests/install.yaml
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.0.0/manifests/install.yaml
 
-# Wait for all pods to be running
-kubectl get pods -n argocd -w
+# 3. Wait until ArgoCD server ready
+kubectl rollout status deployment argocd-server -n argocd
+
+# 4. Apply Application CRD — auto-sync all manifests in apps/argo-cd/
+kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/apps/argo-cd/argocd-self.yaml
+
+# 5. Restart ArgoCD server to pick up configmap insecure mode
+kubectl rollout restart deployment argocd-server -n argocd
+kubectl rollout status deployment argocd-server -n argocd
+```
+
+---
+
+## Verify
+
+```bash
+# Check Application sync status
+kubectl get application argocd-self -n argocd
+
+# Check ingress created
+kubectl get ingress -n argocd
+
+# Check configmap insecure mode
+kubectl get configmap argocd-cmd-params-cm -n argocd -o jsonpath='{.data}'
 ```
 
 Expected output:
+
+| Resource | Status |
+|----------|--------|
+| application/argocd-self | Synced / Healthy |
+| ingress/argocd-server | ADDRESS filled |
+| configmap insecure | `{"server.insecure":"true"}` |
+
+---
+
+## Access
+
+After all steps complete, ArgoCD UI accessible at:
+
 ```
-NAME                                                READY   STATUS
-argocd-application-controller-0                     1/1     Running
-argocd-applicationset-controller-xxx                1/1     Running
-argocd-dex-server-xxx                               1/1     Running
-argocd-notifications-controller-xxx                 1/1     Running
-argocd-redis-xxx                                    1/1     Running
-argocd-repo-server-xxx                              1/1     Running
-argocd-server-xxx                                   1/1     Running
+http://argocd.iksanhariji.my.id
 ```
 
-
-
-### Create Ingress ArgoCD
+Get initial admin password:
 
 ```bash
-cat > apps/argocd/ingress.yaml << 'EOF'
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: argocd-server
-  namespace: argocd
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: argocd.iksanhariji.my.id
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: argocd-server
-                port:
-                  number: 80
-EOF
-
-kubectl apply -f apps/argocd/ingress.yaml
+kubectl get secret argocd-initial-admin-secret -n argocd \
+  -o jsonpath='{.data.password}' | base64 -d && echo
 ```
+
+Login with username `admin` and the password above.
+
+---
+
+## Notes
+
+- Step 4 uses [app-of-apps pattern](https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/) — Argo CD manages its own manifests via Git
+- After bootstrap, **all changes via git commit + push** — no manual `kubectl apply` needed
+- Manifest source: `https://github.com/iksanh/aws-k8s-manifests/tree/main/apps/argo-cd`
+
+
+
