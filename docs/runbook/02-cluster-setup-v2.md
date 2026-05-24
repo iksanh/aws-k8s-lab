@@ -34,6 +34,69 @@ healthy.
 
 ## Execution Order
 
+### Step 0.1 - Load before terraform apply command this resource in alb.tf 
+```bash
+# resource "aws_lb_listener" "https" {
+#   load_balancer_arn = aws_lb.main.arn
+#   port              = 443
+#   protocol          = "HTTPS"
+#   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+#   certificate_arn   = aws_acm_certificate.main.arn
+#
+#   default_action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.workers.arn
+#   }
+# }
+```
+### Step 0.2 
+> Run on: **Local Machine**
+apply and see output acm_validation_records
+```bash
+terraform apply
+terraform output acm_validation_records
+```
+
+expected outuput 
+```bash
+"*.iksanhariji.my.id" = {
+  "name"  = "_xxxxxxxx.iksanhariji.my.id."
+  "type"  = "CNAME"
+  "value" = "_yyyyyyyy.acm-validations.aws."
+} 
+```
+
+Step 0.3: Tambahkan CNAME di Hostinger
+hPanel → Domains → iksanhariji.my.id → DNS / Nameservers
+
+```bash
+Type: CNAME
+Name: _xxxxxxxx ← TANPA .iksanhariji.my.id (auto-append)
+Target: _yyyyyyyy.acm-validations.aws (bebas pakai titik akhir atau tidak)
+TTL: 300
+
+Verifikasi propagasi:
+bashdig +short CNAME _xxxxxxxx.iksanhariji.my.id
+Harus return value yang tadi dimasukkan.
+```
+
+Step 0.4: Tunggu ACM ISSUED
+```bash
+CERT_ARN=$(terraform output -raw acm_certificate_arn 2>/dev/null || \
+  aws acm list-certificates --region us-east-1 \
+  --query "CertificateSummaryList[?DomainName=='*.iksanhariji.my.id'].CertificateArn" --output text)
+
+watch -n 30 "aws acm describe-certificate \
+  --certificate-arn $CERT_ARN \
+  --region us-east-1 --query 'Certificate.Status'"
+```
+Tunggu sampai "ISSUED" (5-30 menit).
+
+Step 5: Uncomment listener HTTPS, apply lagi
+Uncomment aws_lb_listener.https di Terraform, lalu:
+bashterraform apply
+
+
 ### Step 1 — Load environment variables
 > Run on: **Local Machine**
 
