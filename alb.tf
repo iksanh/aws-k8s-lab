@@ -124,8 +124,12 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.workers.arn
+    type             = "redirect"
+    redirect {
+      protocol    = "HTTPS"
+      port        = "443"
+      status_code = "HTTP_301"
+    }
   }
 }
 
@@ -141,5 +145,53 @@ resource "aws_lb_listener" "control_plane" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.control_plane.arn
+  }
+}
+
+
+# ─────────────────────────────────────────
+# ACM Certificate (wildcard) - validasi manual via Hostinger DNS
+# ─────────────────────────────────────────
+resource "aws_acm_certificate" "main" {
+  domain_name               = "*.iksanhariji.my.id"
+  subject_alternative_names = ["iksanhariji.my.id"]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "${var.cluster_name}-cert"
+  }
+}
+
+output "acm_validation_records" {
+  description = "Tambahkan CNAME ini di Hostinger DNS"
+  value = {
+    for dvo in aws_acm_certificate.main.domain_validation_options :
+    dvo.domain_name => {
+      name  = dvo.resource_record_name
+      value = dvo.resource_record_value
+      type  = dvo.resource_record_type
+    }
+  }
+}
+
+# ─────────────────────────────────────────
+# ALB Listener — HTTPS
+# Terminate TLS on ALB, forward HTTP to worker
+# comment before starting lab, uncommnet after acquire ACM cert
+# ─────────────────────────────────────────
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate.main.arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.workers.arn
   }
 }
