@@ -163,3 +163,8 @@ variable "db_allocated_storage" {
   type        = number
   default     = 20
 }
+
+variable "enable_http_listner" {
+  type        = bool
+  default     = false
+}

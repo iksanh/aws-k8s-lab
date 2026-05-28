@@ -184,6 +184,7 @@ output "acm_validation_records" {
 # comment before starting lab, uncommnet after acquire ACM cert
 # ─────────────────────────────────────────
 resource "aws_lb_listener" "https" {
+  count = var.enable_http_listner ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
