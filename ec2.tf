@@ -32,7 +32,7 @@ resource "aws_instance" "bastion" {
   root_block_device {
     volume_size           = 10
     volume_type           = "gp3"
-    encrypted             = true
+    encrypted             = false
     delete_on_termination = true
 
     tags = {
@@ -113,7 +113,7 @@ resource "aws_instance" "control_plane" {
   root_block_device {
     volume_size           = 30
     volume_type           = "gp3"
-    encrypted             = true
+    encrypted             = false
     delete_on_termination = true
 
     tags = {
@@ -172,7 +172,7 @@ resource "aws_instance" "worker" {
   root_block_device {
     volume_size           = 30
     volume_type           = "gp3"
-    encrypted             = true
+    encrypted             = false
     delete_on_termination = true
 
     tags = {
