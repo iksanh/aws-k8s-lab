@@ -32,9 +32,11 @@ pipeline {
 
     stage('3. Apply — fase 1 (ACM belum issued)') {
       steps {
-        sh 'terraform init -input=false'
-        sh 'terraform apply -auto-approve -input=false -var enable_https_listener=false'
-      }
+    withCredentials([string(credentialsId: 'db-password', variable: 'TF_VAR_db_password')]) {
+      sh 'terraform init -input=false'
+      sh 'terraform apply -auto-approve -input=false -var enable_https_listener=false'
+    }
+  }
     }
 
     stage('4. Tunggu ACM ISSUED') {
@@ -55,8 +57,10 @@ pipeline {
 
     stage('5. Apply — fase 2 (enable HTTPS listener)') {
       steps {
-        sh 'terraform apply -auto-approve -input=false -var enable_https_listener=true'
-      }
+    withCredentials([string(credentialsId: 'db-password', variable: 'TF_VAR_db_password')]) {
+      sh 'terraform apply -auto-approve -input=false -var enable_https_listener=true'
+    }
+  }
     }
 
     stage('6. Set env + generate inventory') {
