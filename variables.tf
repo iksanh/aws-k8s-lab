@@ -164,7 +164,7 @@ variable "db_allocated_storage" {
   default     = 20
 }
 
-variable "enable_http_listner" {
+variable "enable_https_listener" {
   type        = bool
   default     = false
 }

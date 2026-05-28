@@ -26,80 +26,74 @@ pipeline {
     stage('2. Reset State (tf-reset)') {
       when { expression { params.RESET_STATE } }
       steps {
-        dir('terraform') {
-          sh 'rm -f terraform.tfstate terraform.tfstate.backup'
-          sh 'terraform init -input=false'
-        }
+        sh 'rm -f terraform.tfstate terraform.tfstate.backup'
       }
     }
 
     stage('3. Apply — fase 1 (ACM belum issued)') {
       steps {
-        dir('terraform') {
-          sh 'terraform init -input=false'
-          sh 'terraform apply -auto-approve -input=false -var enable_https_listener=false'
-        }
+        sh 'terraform init -input=false'
+        sh 'terraform apply -auto-approve -input=false -var enable_https_listener=false'
       }
     }
 
     stage('4. Tunggu ACM ISSUED') {
       steps {
-        dir('terraform') {
-          sh '''
-            CERT_ARN=$(terraform output -raw acm_certificate_arn)
-            for i in $(seq 1 40); do
-              STATUS=$(aws acm describe-certificate --certificate-arn "$CERT_ARN" \
-                        --region us-east-1 --query 'Certificate.Status' --output text)
-              echo "ACM status: $STATUS ($i/40)"
-              [ "$STATUS" = "ISSUED" ] && exit 0
-              sleep 30
-            done
-            echo "ACM tidak ISSUED setelah ~20 menit (cek CNAME di Hostinger)"; exit 1
-          '''
-        }
+        sh '''
+          CERT_ARN=$(terraform output -raw acm_certificate_arn)
+          for i in $(seq 1 40); do
+            STATUS=$(aws acm describe-certificate --certificate-arn "$CERT_ARN" \
+                      --region us-east-1 --query 'Certificate.Status' --output text)
+            echo "ACM status: $STATUS ($i/40)"
+            [ "$STATUS" = "ISSUED" ] && exit 0
+            sleep 30
+          done
+          echo "ACM tidak ISSUED setelah ~20 menit (cek CNAME di Hostinger)"; exit 1
+        '''
       }
     }
 
     stage('5. Apply — fase 2 (enable HTTPS listener)') {
       steps {
-        dir('terraform') {
-          sh 'terraform apply -auto-approve -input=false -var enable_https_listener=true'
-        }
+        sh 'terraform apply -auto-approve -input=false -var enable_https_listener=true'
       }
     }
 
     stage('6. Set env + generate inventory') {
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
+          set -e
           source scripts/set-env.sh
           bash scripts/generate-inventory.sh
-          cat $INV
+          cat "$INV"
         '''
       }
     }
 
     stage('7. Tunggu node siap + join workers') {
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
+          set -e
           source scripts/set-env.sh
           for i in $(seq 1 20); do
-            ansible all -i $INV -m ping && break
+            ansible all -i "$INV" -m ping && break
             echo "node belum siap, retry $i/20..."; sleep 15
           done
 
-          JOIN=$(ansible cp-1 -i $INV -m shell \
+          JOIN=$(ansible cp-1 -i "$INV" -m shell -b \
                    -a 'kubeadm token create --print-join-command' | grep -E '^kubeadm join')
-          ansible workers -i $INV -m shell -a "sudo $JOIN" --timeout=120
+          ansible workers -i "$INV" -b -m shell -a "$JOIN" --timeout=120
         '''
       }
     }
 
     stage('8. Verify cluster Ready') {
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
+          set -e
           source scripts/set-env.sh
           for i in $(seq 1 12); do
-            OUT=$(ansible cp-1 -i $INV -m shell -a "kubectl get nodes --no-headers")
+            OUT=$(ansible cp-1 -i "$INV" -m shell -a "kubectl get nodes --no-headers")
             echo "$OUT"
             echo "$OUT" | grep -q "NotReady" || { echo "semua Ready"; exit 0; }
             echo "tunggu Calico CNI... $i/12"; sleep 15
@@ -111,9 +105,10 @@ pipeline {
 
     stage('9. Install Helm + ArgoCD') {
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
+          set -e
           source scripts/set-env.sh
-          ansible cp-1 -i $INV -m shell -a "
+          ansible cp-1 -i "$INV" -b -m shell -a "
             command -v helm >/dev/null 2>&1 || (curl -fsSL -o /tmp/get_helm.sh \
               https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && \
               bash /tmp/get_helm.sh) &&
@@ -133,9 +128,11 @@ pipeline {
           string(credentialsId: 'grafana-admin-pass', variable: 'GRAFANA_PASS'),
           string(credentialsId: 'prometheus-basic-pass', variable: 'PROM_PASS')
         ]) {
-          sh '''
+          sh '''#!/usr/bin/env bash
+            set -e
             source scripts/set-env.sh
-            ansible cp-1 -i $INV -m shell -a "
+            ansible cp-1 -i "$INV" -b -m apt -a "name=apache2-utils state=present update_cache=yes"
+            ansible cp-1 -i "$INV" -b -m shell -a "
               kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - &&
 
               kubectl create secret generic grafana-admin -n monitoring \
