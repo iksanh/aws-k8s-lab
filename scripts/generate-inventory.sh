@@ -70,7 +70,8 @@ control_plane
 workers
 
 [k8s_cluster:vars]
-ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyJump=ubuntu@${BASTION_IP}'
+#ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyJump=ubuntu@${BASTION_IP}'
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyCommand="ssh -W %h:%p -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /var/jenkins_home/.ssh/id_rsa ubuntu@${BASTION_IP}"'
 
 [bastion:vars]
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
