@@ -182,4 +182,3 @@ pipeline {
   success { echo 'Lab siap.' }
 }
 }
-}
