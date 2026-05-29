@@ -164,7 +164,12 @@ pipeline {
   }
 
   post {
-    success { echo 'Lab siap. Grafana/Prometheus sync via ArgoCD (5-7 menit).' }
-    failure { echo 'Gagal. Sandbox akan auto-wipe, atau jalankan terraform destroy manual.' }
+  failure {
+    echo 'Build gagal — auto-destroy sisa resource biar bersih...'
+    withCredentials([string(credentialsId: 'db-password', variable: 'TF_VAR_db_password')]) {
+      sh 'terraform destroy -auto-approve -input=false -var enable_https_listener=false || true'
+    }
   }
+  success { echo 'Lab siap. Grafana/Prometheus sync via ArgoCD (5-7 menit).' }
+}
 }
