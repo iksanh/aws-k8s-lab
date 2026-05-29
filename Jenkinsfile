@@ -2,8 +2,11 @@ pipeline {
   agent any
 
   parameters {
-    booleanParam(name: 'RESET_STATE', defaultValue: true, description: 'tf-reset: hapus state lama (step 4)')
-  }
+  booleanParam(name: 'RESET_STATE', defaultValue: false,
+               description: 'Centang HANYA saat sandbox AWS baru.')
+  booleanParam(name: 'AUTO_DESTROY_ON_FAILURE', defaultValue: false,
+               description: 'Centang kalau mau cleanup otomatis saat gagal. Off = infra dibiarkan, kamu inspeksi manual.')
+}
 
   options {
     timeout(time: 45, unit: 'MINUTES')
@@ -165,11 +168,18 @@ pipeline {
 
   post {
   failure {
-    echo 'Build gagal — auto-destroy sisa resource biar bersih...'
-    withCredentials([string(credentialsId: 'db-password', variable: 'TF_VAR_db_password')]) {
-      sh 'terraform destroy -auto-approve -input=false -var enable_https_listener=false || true'
+    script {
+      if (params.AUTO_DESTROY_ON_FAILURE) {
+        echo 'Auto-destroy aktif. Membersihkan...'
+        withCredentials([string(credentialsId: 'db-password', variable: 'TF_VAR_db_password')]) {
+          sh 'terraform destroy -auto-approve -input=false -var enable_https_listener=false || true'
+        }
+      } else {
+        echo 'Build gagal. Infra DIBIARKAN untuk inspeksi. Jalankan terraform destroy manual jika perlu.'
+      }
     }
   }
-  success { echo 'Lab siap. Grafana/Prometheus sync via ArgoCD (5-7 menit).' }
+  success { echo 'Lab siap.' }
+}
 }
 }
