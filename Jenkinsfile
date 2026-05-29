@@ -81,22 +81,36 @@ pipeline {
 }
 
     stage('7. Tunggu node siap + join workers') {
-      steps {
-        sh '''#!/usr/bin/env bash
-          set -e
-          source scripts/set-env.sh
-          for i in $(seq 1 20); do
-            ansible all -i "$INV" -m ping && break
-            echo "node belum siap, retry $i/20..."; sleep 15
-          done
+  steps {
+    sh '''#!/usr/bin/env bash
+      set -e
+      eval "$(ssh-agent -s)"
+      ssh-add /var/jenkins_home/.ssh/id_rsa
+      source scripts/set-env.sh
+      export ANSIBLE_SSH_ARGS="-o ForwardAgent=yes"
 
-          JOIN=$(ansible cp-1 -i "$INV" -m shell -b \
-                   -a 'kubeadm token create --print-join-command' | grep -E '^kubeadm join')
-          ansible workers -i "$INV" -b -m shell -a "$JOIN" --timeout=120
-        '''
-      }
-    }
+      for i in $(seq 1 20); do
+        ansible all -i "$INV" -m ping && break
+        echo "node belum siap, retry $i/20..."; sleep 15
+      done
 
+      # cek workers sudah join atau belum
+      NODE_COUNT=$(ansible cp-1 -i "$INV" -b -m shell \
+        -a "KUBECONFIG=/etc/kubernetes/admin.conf kubectl get nodes --no-headers | wc -l" \
+        | tail -1 | tr -d "[:space:]")
+      echo "Jumlah node terdaftar: $NODE_COUNT"
+
+      if [ "$NODE_COUNT" -ge 3 ]; then
+        echo "Workers sudah join, skip kubeadm join."
+      else
+        echo "Workers belum join, generate token dan join..."
+        JOIN=$(ansible cp-1 -i "$INV" -b -m shell \
+                 -a "kubeadm token create --print-join-command" | grep -E "^kubeadm join")
+        ansible workers -i "$INV" -b -m shell -a "$JOIN" --timeout=120
+      fi
+    '''
+  }
+}
     stage('8. Verify cluster Ready') {
       steps {
         sh '''#!/usr/bin/env bash
