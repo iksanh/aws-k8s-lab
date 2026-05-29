@@ -82,5 +82,9 @@ cat "$OUTPUT_DIR/hosts.ini"
 
 # Add bastion to known_hosts to prevent SSH host key verification failure
 echo "Adding bastion to known_hosts..."
-ssh-keyscan -H ${BASTION_IP} >> ~/.ssh/known_hosts 2>/dev/null
+# di awal script atau dekat line 85
+KNOWN_HOSTS_FILE="${KNOWN_HOSTS_FILE:-$HOME/.ssh/known_hosts}"
+
+# ganti perintah append jadi:
+ssh-keyscan -H "$BASTION_IP" >> "$KNOWN_HOSTS_FILE"
 echo "Bastion added to known_hosts"

@@ -67,15 +67,18 @@ pipeline {
     }
 
     stage('6. Set env + generate inventory') {
-      steps {
-        sh '''#!/usr/bin/env bash
-          set -e
-          source scripts/set-env.sh
-          bash scripts/generate-inventory.sh
-          cat "$INV"
-        '''
-      }
-    }
+  steps {
+    sh '''#!/usr/bin/env bash
+      set -e
+      export KNOWN_HOSTS_FILE="$WORKSPACE/.known_hosts"
+      mkdir -p "$(dirname "$KNOWN_HOSTS_FILE")"
+      touch "$KNOWN_HOSTS_FILE"
+      source scripts/set-env.sh
+      bash scripts/generate-inventory.sh
+      cat "$INV"
+    '''
+  }
+}
 
     stage('7. Tunggu node siap + join workers') {
       steps {
