@@ -114,23 +114,26 @@ pipeline {
     }
 
     stage('9. Install Helm + ArgoCD') {
-      steps {
-        sh '''#!/usr/bin/env bash
-          set -e
-          source scripts/set-env.sh
-          ansible cp-1 -i "$INV" -b -m shell -a "
-            command -v helm >/dev/null 2>&1 || (curl -fsSL -o /tmp/get_helm.sh \
-              https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && \
-              bash /tmp/get_helm.sh) &&
-            kubectl get ns argocd >/dev/null 2>&1 || kubectl create namespace argocd &&
-            kubectl apply -n argocd --server-side --force-conflicts \
-              -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.0.0/manifests/install.yaml &&
-            kubectl rollout status deployment argocd-server -n argocd --timeout=300s &&
-            kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/apps/argo-cd/argocd-self.yaml
-          "
-        '''
-      }
-    }
+  steps {
+    sh '''#!/usr/bin/env bash
+      set -e
+      eval "$(ssh-agent -s)"
+      ssh-add /var/jenkins_home/.ssh/id_rsa
+      source scripts/set-env.sh
+      ansible cp-1 -i "$INV" -b -m shell -a "
+        export KUBECONFIG=/etc/kubernetes/admin.conf &&
+        command -v helm >/dev/null 2>&1 || (curl -fsSL -o /tmp/get_helm.sh \
+          https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && \
+          bash /tmp/get_helm.sh) &&
+        kubectl get ns argocd >/dev/null 2>&1 || kubectl create namespace argocd &&
+        kubectl apply -n argocd --server-side --force-conflicts \
+          -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.0.0/manifests/install.yaml &&
+        kubectl rollout status deployment argocd-server -n argocd --timeout=300s &&
+        kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/apps/argo-cd/argocd-self.yaml
+      "
+    '''
+  }
+}
 
     stage('10. Install Prometheus + Grafana stack') {
       steps {
