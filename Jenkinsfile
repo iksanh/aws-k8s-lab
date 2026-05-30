@@ -184,6 +184,31 @@ pipeline {
       }
     }
 
+stage('11b. Install Ingress Nginx') {
+  steps {
+    sh '''#!/usr/bin/env bash
+      set -e
+      source scripts/set-env.sh
+      ansible cp-1 -i "$INV" -b -m shell -a "
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo update
+
+        helm status ingress-nginx -n ingress-nginx >/dev/null 2>&1 || \
+          helm install ingress-nginx ingress-nginx/ingress-nginx \
+            --namespace ingress-nginx \
+            --create-namespace \
+            --set controller.service.type=NodePort \
+            --set controller.service.nodePorts.http=30080 \
+            --set controller.service.nodePorts.https=30443
+
+        kubectl rollout status deployment ingress-nginx-controller -n ingress-nginx --timeout=300s
+      "
+    '''
+  }
+}
+
     stage('12. Configure Secret untuk Grafana & Prometheus') {
   steps {
     withCredentials([
