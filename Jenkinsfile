@@ -221,17 +221,17 @@ pipeline {
   }
 }
     stage('13. Install Apps of apps') {
-      steps {
-        sh '''#!/usr/bin/env bash
-          set -e
-          source scripts/set-env.sh
-          ansible cp-1 -i "$INV" -b -m shell -a "
-            kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/bootstrap/root-app.yaml
-          "
-        '''
-      }
-    }
+  steps {
+    sh '''#!/usr/bin/env bash
+      set -e
+      source scripts/set-env.sh
+      ansible cp-1 -i "$INV" -b -m shell -a "
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+        kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/bootstrap/root-app.yaml
+      "
+    '''
   }
+}
 
   post {
     failure {
