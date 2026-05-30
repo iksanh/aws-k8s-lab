@@ -214,7 +214,7 @@ pipeline {
           rm -f /tmp/auth
 
           kubectl get storageclass gp3 >/dev/null 2>&1 || \
-            kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/apps/monitoring/storageclass.yaml
+            kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/apps/monitoring/resources/storageclass.yaml
         "
       '''
     }
