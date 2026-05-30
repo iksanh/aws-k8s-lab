@@ -185,43 +185,41 @@ pipeline {
     }
 
     stage('12. Configure Secret untuk Grafana & Prometheus') {
-      steps {
-        withCredentials([
-          string(credentialsId: 'grafana-admin-pass', variable: 'GRAFANA_PASS'),
-          string(credentialsId: 'prometheus-basic-pass', variable: 'PROM_PASS')
-        ]) {
-          sh '''#!/usr/bin/env bash
-            set -e
-            source scripts/set-env.sh
+  steps {
+    withCredentials([
+      string(credentialsId: 'grafana-admin-pass', variable: 'GRAFANA_PASS'),
+      string(credentialsId: 'prometheus-basic-pass', variable: 'PROM_PASS')
+    ]) {
+      sh '''#!/usr/bin/env bash
+        set -e
+        source scripts/set-env.sh
 
-            ansible cp-1 -i "$INV" -b -m apt \
-              -a "name=apache2-utils state=present update_cache=yes"
+        ansible cp-1 -i "$INV" -b -m apt \
+          -a "name=apache2-utils state=present update_cache=yes"
 
-            ansible cp-1 -i "$INV" -b -m shell \
-              -e "gp=$GRAFANA_PASS" \
-              -e "pp=$PROM_PASS" \
-              -a '
-                kubectl get ns monitoring >/dev/null 2>&1 || kubectl create namespace monitoring
+        ansible cp-1 -i "$INV" -b -m shell -a "
+          export KUBECONFIG=/etc/kubernetes/admin.conf
 
-                kubectl create secret generic grafana-admin -n monitoring \
-                  --from-literal=admin-user=admin \
-                  --from-literal=admin-password="$gp" \
-                  --dry-run=client -o yaml | kubectl apply -f -
+          kubectl get ns monitoring >/dev/null 2>&1 || kubectl create namespace monitoring
 
-                htpasswd -bc /tmp/auth admin "$pp"
-                kubectl create secret generic prometheus-basic-auth -n monitoring \
-                  --from-file=auth=/tmp/auth \
-                  --dry-run=client -o yaml | kubectl apply -f -
-                rm -f /tmp/auth
+          kubectl create secret generic grafana-admin -n monitoring \
+            --from-literal=admin-user=admin \
+            --from-literal=admin-password='${GRAFANA_PASS}' \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-                kubectl get storageclass gp3 >/dev/null 2>&1 || \
-                  kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/apps/monitoring/resources/storageclass.yaml
-              '
-          '''
-        }
-      }
+          htpasswd -bc /tmp/auth admin '${PROM_PASS}'
+          kubectl create secret generic prometheus-basic-auth -n monitoring \
+            --from-file=auth=/tmp/auth \
+            --dry-run=client -o yaml | kubectl apply -f -
+          rm -f /tmp/auth
+
+          kubectl get storageclass gp3 >/dev/null 2>&1 || \
+            kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/apps/monitoring/storageclass.yaml
+        "
+      '''
     }
-
+  }
+}
     stage('13. Install Apps of apps') {
       steps {
         sh '''#!/usr/bin/env bash
