@@ -245,18 +245,32 @@ stage('11b. Install Ingress Nginx') {
     }
   }
 }
-    stage('13. Install Apps of apps') {
-      steps {
-        sh '''#!/usr/bin/env bash
+   stage('13. Install Apps of apps') {
+  steps {
+    sh '''#!/usr/bin/env bash
       set -e
       source scripts/set-env.sh
       ansible cp-1 -i "$INV" -b -m shell -a "
-        export KUBECONFIG=/etc/kubernetes/admin.conf
-        kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/bootstrap/root-app.yaml
+        export KUBECONFIG=/etc/kubernetes/admin.conf &&
+
+        # Apply root app
+        kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/bootstrap/root-app.yaml &&
+
+        # Tunggu ArgoCD sync ConfigMap insecure
+        echo 'Waiting for ArgoCD to apply insecure ConfigMap...' &&
+        kubectl wait --for=jsonpath={.data.server\\.insecure}=true \
+          configmap/argocd-cmd-params-cm \
+          -n argocd \
+          --timeout=120s &&
+
+        # Restart argocd-server untuk pickup config baru
+        kubectl rollout restart deployment argocd-server -n argocd &&
+        kubectl rollout status deployment argocd-server -n argocd --timeout=120s &&
+        echo 'ArgoCD insecure mode ready'
       "
     '''
-      }
-    }
+  }
+}
   }
 
   post {
