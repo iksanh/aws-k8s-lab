@@ -164,25 +164,31 @@ pipeline {
     }
 
     stage('11. Install EBS CSI Driver') {
-      steps {
-        sh '''#!/usr/bin/env bash
-          set -e
-          source scripts/set-env.sh
-          ansible cp-1 -i "$INV" -b -m shell -a "
-            helm repo add aws-ebs-csi-driver \
-              https://kubernetes-sigs.github.io/aws-ebs-csi-driver
-            helm repo update
+  steps {
+    sh '''#!/usr/bin/env bash
+      set -e
+      source scripts/set-env.sh
+      ansible cp-1 -i "$INV" -b -m shell -a "
+        export KUBECONFIG=/etc/kubernetes/admin.conf
 
-            helm status aws-ebs-csi-driver -n kube-system >/dev/null 2>&1 || \
-              helm install aws-ebs-csi-driver \
-                aws-ebs-csi-driver/aws-ebs-csi-driver \
-                --namespace kube-system
+        helm repo add aws-ebs-csi-driver \
+          https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+        helm repo update
 
-            kubectl get pods -n kube-system | grep ebs-csi || true
-          "
-        '''
-      }
-    }
+        helm status aws-ebs-csi-driver -n kube-system >/dev/null 2>&1 || \
+          helm install aws-ebs-csi-driver \
+            aws-ebs-csi-driver/aws-ebs-csi-driver \
+            --namespace kube-system
+
+        # Tunggu EBS CSI controller ready sebelum lanjut
+        kubectl rollout status deployment ebs-csi-controller \
+          -n kube-system --timeout=300s
+
+        echo 'EBS CSI Driver ready'
+      "
+    '''
+  }
+}
 
 stage('11b. Install Ingress Nginx') {
   steps {
