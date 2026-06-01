@@ -262,7 +262,10 @@ stage('11b. Install Ingress Nginx') {
         # Apply root app
         kubectl apply -f https://raw.githubusercontent.com/iksanh/aws-k8s-manifests/main/bootstrap/root-app.yaml &&
 
-     
+        # Tunggu ArgoCD sync ConfigMap insecure
+        echo 'Waiting 90s for ArgoCD to sync...' &&
+        sleep 90 &&
+
         # Restart argocd-server
         kubectl rollout restart deployment argocd-server -n argocd &&
         kubectl rollout status deployment argocd-server -n argocd --timeout=120s &&
